@@ -45,7 +45,7 @@ const labelClassName =
   "text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-white/45";
 const controlClassName =
   "h-10 rounded-xl border border-slate-200/80 bg-white px-3 text-sm text-slate-900 shadow-none hover:border-slate-300 hover:bg-white focus-visible:ring-2 focus-visible:ring-slate-900/10 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white dark:hover:border-neutral-700 dark:focus-visible:ring-white/15";
-const fieldClassName = "space-y-1.5";
+const fieldClassName = "flex flex-col gap-1.5";
 
 const iconByType: Record<CcSwitchClientType, string> = {
   claude: iconClaude,
