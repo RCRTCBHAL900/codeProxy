@@ -19,6 +19,15 @@ export interface UsageImportResponse {
 export interface ClearUsageLogsResponse {
   deleted_logs: number;
   deleted_contents: number;
+  cleared_body_rows?: number;
+  cleared_detail_rows?: number;
+  cleared_legacy_rows?: number;
+}
+
+export interface ClearUsageLogsPayload {
+  clear_body_content: boolean;
+  clear_detail_content: boolean;
+  clear_request_records: boolean;
 }
 
 export interface AuthFileGroupTrendPoint {
@@ -240,8 +249,8 @@ export const usageApi = {
     };
   },
 
-  clearUsageLogs(): Promise<ClearUsageLogsResponse> {
-    return apiClient.delete<ClearUsageLogsResponse>("/usage/logs");
+  clearUsageLogs(payload: ClearUsageLogsPayload): Promise<ClearUsageLogsResponse> {
+    return apiClient.delete<ClearUsageLogsResponse>("/usage/logs", payload);
   },
 
   exportUsage(): Promise<UsageExportPayload> {
