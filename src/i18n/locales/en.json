@@ -3363,6 +3363,8 @@
     "usage_stats_desc": "usage-statistics-enabled",
     "force_prefix_label": "Force Model Prefix",
     "force_prefix_desc": "force-model-prefix",
+    "prefer_ipv4_label": "Prefer IPv4",
+    "prefer_ipv4_desc": "Force all outbound upstream connections over IPv4 only. Useful when IPv6 is via tunnel and has poor quality.",
     "ws_auth_label": "WebSocket Auth",
     "ws_auth_desc": "ws-auth",
     "remote_allow_desc": "remote-management.allow-remote",

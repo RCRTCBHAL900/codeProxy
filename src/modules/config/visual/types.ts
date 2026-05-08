@@ -93,6 +93,7 @@ export type VisualConfigValues = {
   autoUpdateDockerImage: string;
 
   proxyUrl: string;
+  preferIPv4: boolean;
   forceModelPrefix: boolean;
   requestRetry: string;
   maxRetryInterval: string;
@@ -146,6 +147,7 @@ export const DEFAULT_VISUAL_VALUES: VisualConfigValues = {
   autoUpdateChannel: "main",
   autoUpdateDockerImage: "ghcr.io/kittors/clirelay",
   proxyUrl: "",
+  preferIPv4: false,
   forceModelPrefix: false,
   requestRetry: "",
   maxRetryInterval: "",

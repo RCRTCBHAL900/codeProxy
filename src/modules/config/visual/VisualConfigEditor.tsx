@@ -310,6 +310,13 @@ export function VisualConfigEditor({
                 disabled={disabled}
               />
             </Field>
+            <ToggleSwitch
+              label={t("visual_config.prefer_ipv4_label")}
+              description={t("visual_config.prefer_ipv4_desc")}
+              checked={values.preferIPv4}
+              onCheckedChange={(next) => update({ preferIPv4: next })}
+              disabled={disabled}
+            />
             <div className="grid gap-3 lg:grid-cols-2">
               <Field label="request-retry" hint={t("visual_config.non_negative_int")}>
                 <TextInput

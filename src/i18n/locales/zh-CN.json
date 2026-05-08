@@ -3509,6 +3509,8 @@
     "usage_stats_desc": "对应 usage-statistics-enabled",
     "force_prefix_label": "强制模型前缀",
     "force_prefix_desc": "对应 force-model-prefix",
+    "prefer_ipv4_label": "优先使用 IPv4",
+    "prefer_ipv4_desc": "强制所有上游出站连接只使用 IPv4。适用于 IPv6 走隧道且质量较差的情况。",
     "ws_auth_label": "WebSocket 鉴权",
     "ws_auth_desc": "对应 ws-auth",
     "remote_allow_desc": "对应 remote-management.allow-remote",
