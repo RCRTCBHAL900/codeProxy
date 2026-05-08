@@ -436,11 +436,6 @@ export function ApiKeysPage() {
     () => auth?.state.apiBase || detectApiBaseFromLocation(),
     [auth?.state.apiBase],
   );
-  const ccSwitchImportConfigsForClient = useMemo(
-    () => ccSwitchImportConfigs.filter((config) => config.clientType === ccSwitchImportClientType),
-    [ccSwitchImportClientType, ccSwitchImportConfigs],
-  );
-
   const ccSwitchImportAllowedGroups = useMemo(() => {
     const entryGroups = (ccSwitchImportEntry?.["allowed-channel-groups"] ?? [])
       .map((group) =>
@@ -464,6 +459,17 @@ export function ApiKeysPage() {
       ),
     );
   }, [ccSwitchImportEntry, channelGroupItems]);
+
+  const ccSwitchImportConfigsForClient = useMemo(
+    () =>
+      ccSwitchImportConfigs.filter(
+        (config) =>
+          config.clientType === ccSwitchImportClientType &&
+          (ccSwitchImportAllowedGroups.length === 0 ||
+            config.allowedChannelGroups.some((group) => ccSwitchImportAllowedGroups.includes(group))),
+      ),
+    [ccSwitchImportClientType, ccSwitchImportConfigs, ccSwitchImportAllowedGroups],
+  );
 
   const ccSwitchImportGroupOptions = useMemo<CcSwitchImportGroupOption[]>(() => {
     const groupByName = new Map(
@@ -546,8 +552,20 @@ export function ApiKeysPage() {
   const handleCcSwitchImportClientTypeChange = useCallback(
     (clientType: CcSwitchClientType) => {
       setCcSwitchImportClientType(clientType);
+      const entryGroups = (ccSwitchImportEntry?.["allowed-channel-groups"] ?? [])
+        .map((g) =>
+          String(g ?? "")
+            .trim()
+            .toLowerCase(),
+        )
+        .filter(Boolean);
       const preset =
-        ccSwitchImportConfigs.find((config) => config.clientType === clientType) ?? null;
+        ccSwitchImportConfigs.find(
+          (config) =>
+            config.clientType === clientType &&
+            (entryGroups.length === 0 ||
+              config.allowedChannelGroups.some((g) => entryGroups.includes(g))),
+        ) ?? null;
       if (!preset) {
         setCcSwitchImportConfigId("");
         setCcSwitchImportClaudeApiKeyField("ANTHROPIC_API_KEY");
@@ -561,7 +579,7 @@ export function ApiKeysPage() {
     [
       applyCcSwitchImportConfig,
       ccSwitchImportConfigs,
-      ccSwitchImportEntry?.name,
+      ccSwitchImportEntry,
       ccSwitchImportGroup,
       loadCcSwitchImportModels,
     ],
@@ -589,7 +607,12 @@ export function ApiKeysPage() {
       setCcSwitchImportEnabled(true);
       setCcSwitchImportModels([]);
       const initialPreset =
-        ccSwitchImportConfigs.find((config) => config.clientType === "claude") ?? null;
+        ccSwitchImportConfigs.find(
+          (config) =>
+            config.clientType === "claude" &&
+            (entryGroups.length === 0 ||
+              config.allowedChannelGroups.some((g) => entryGroups.includes(g))),
+        ) ?? null;
       if (initialPreset) {
         applyCcSwitchImportConfig(initialPreset, initialGroup);
       } else {
