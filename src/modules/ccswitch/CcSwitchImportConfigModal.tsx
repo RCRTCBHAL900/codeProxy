@@ -138,17 +138,20 @@ function reconcileClaudeMappings(
   const currentByRole = new Map(
     currentMappings
       .filter((mapping) => mapping.role)
-      .map((mapping) => [mapping.role, mapping.targetModel]),
+      .map((mapping) => [mapping.role, mapping]),
   );
 
   return CLAUDE_ROLE_ORDER.map((role) => {
+    const existing = currentByRole.get(role);
     const targetModel =
-      currentByRole.get(role)?.trim() ||
+      existing?.targetModel.trim() ||
       pickClaudeRoleModel(role, models) ||
       (role === "main" ? fallbackModel.trim() : "");
+    const existingRequestModel = existing?.requestModel.trim() ?? "";
     return {
       role,
-      requestModel: role,
+      requestModel:
+        existingRequestModel && existingRequestModel !== role ? existingRequestModel : targetModel,
       targetModel,
     };
   });
@@ -183,11 +186,15 @@ function prepareDraftForSave(draft: ConfigDraft): ConfigDraft {
   const endpointPath = DEFAULT_CC_SWITCH_IMPORT_SETTINGS[draft.clientType].endpointPath;
   const selectedGroup = draft.allowedChannelGroups[0] ?? "";
   const normalizedMappings = draft.modelMappings
-    .map((mapping) => ({
-      ...(mapping.role ? { role: mapping.role } : {}),
-      requestModel: mapping.role ? mapping.role : mapping.requestModel.trim(),
-      targetModel: mapping.targetModel.trim(),
-    }))
+    .map((mapping) => {
+      const targetModel = mapping.targetModel.trim();
+      const requestModel = mapping.requestModel.trim() || targetModel;
+      return {
+        ...(mapping.role ? { role: mapping.role } : {}),
+        requestModel,
+        targetModel,
+      };
+    })
     .filter((mapping) => mapping.targetModel && (mapping.role || mapping.requestModel));
   const defaultModel =
     draft.clientType === "claude"
@@ -248,16 +255,19 @@ export function CcSwitchImportConfigModal({
     }
 
     let cancelled = false;
+    const groupAllowedModels = dedupeModels(selectedGroupOption?.allowedModels ?? []);
+    if (groupAllowedModels.length > 0) {
+      setAvailableModels(groupAllowedModels);
+      setModelsLoading(false);
+      return;
+    }
+
     setModelsLoading(true);
     modelsApi
       .listAvailableModels({ allowedChannelGroups: [selectedGroup] })
       .then((models) => {
         if (cancelled) return;
-        const groupAllowedModels = dedupeModels(selectedGroupOption?.allowedModels ?? []);
-        const allowedSet = new Set(groupAllowedModels.map((model) => model.toLowerCase()));
-        const modelIds = models
-          .map((model) => model.id)
-          .filter((model) => allowedSet.size === 0 || allowedSet.has(model.toLowerCase()));
+        const modelIds = models.map((model) => model.id);
         setAvailableModels(dedupeModels(modelIds));
       })
       .catch(() => {
@@ -307,7 +317,14 @@ export function CcSwitchImportConfigModal({
         const path = routeLabel(option.routePath);
         return {
           value: option.value,
-          triggerLabel: option.label,
+          triggerLabel: (
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="truncate font-semibold">{option.label}</span>
+              <span className="shrink-0 font-mono text-[11px] text-slate-500 dark:text-white/50">
+                {path}
+              </span>
+            </span>
+          ),
           searchText: `${option.label} ${path} ${option.description ?? ""}`,
           label: (
             <span className="flex min-w-0 flex-col gap-0.5">
@@ -391,6 +408,18 @@ export function CcSwitchImportConfigModal({
     });
   };
 
+  const updateClaudeRequestModel = (role: CcSwitchClaudeModelRole, requestModel: string) => {
+    setDraft((current) => {
+      const modelMappings = current.modelMappings.map((mapping) =>
+        mapping.role === role ? { ...mapping, requestModel } : mapping,
+      );
+      return {
+        ...current,
+        modelMappings,
+      };
+    });
+  };
+
   return (
     <Modal
       open={open}
@@ -416,26 +445,6 @@ export function CcSwitchImportConfigModal({
       }
     >
       <div className="space-y-4">
-        <Tabs
-          value={draft.clientType}
-          onValueChange={(next) => setClientType(next as CcSwitchClientType)}
-        >
-          <TabsList
-            aria-label={t("ccswitch.import_client_type")}
-            className="sticky top-0 z-10 shadow-sm shadow-slate-900/5"
-          >
-            {CC_SWITCH_CLIENTS.map((item) => {
-              const label = t(item.labelKey);
-              return (
-                <TabsTrigger key={item.type} value={item.type} aria-label={label}>
-                  <img src={iconByType[item.type]} alt="" className="h-4 w-4" />
-                  {label}
-                </TabsTrigger>
-              );
-            })}
-          </TabsList>
-        </Tabs>
-
         <section className="space-y-3 rounded-3xl border border-slate-200/80 bg-white p-4 shadow-[0_18px_44px_rgb(15_23_42_/_0.06)] dark:border-neutral-800 dark:bg-neutral-950/80">
           <label className={fieldClassName}>
             <span className={labelClassName}>{t("ccswitch.config_select_channel_group")}</span>
@@ -461,30 +470,38 @@ export function CcSwitchImportConfigModal({
             />
           </label>
 
-          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(170px,0.45fr)]">
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className={labelClassName}>{t("ccswitch.config_full_base_url")}</span>
-                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-300">
-                  {t("ccswitch.config_live_preview")}
-                </span>
-              </div>
-              <div
-                data-testid="ccswitch-config-endpoint-preview"
-                className="overflow-x-auto rounded-2xl border border-slate-200/80 bg-slate-950 px-3 py-2.5 font-mono text-sm text-emerald-200 shadow-inner dark:border-neutral-800"
-              >
-                {fullBaseUrl || "--"}
-              </div>
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className={labelClassName}>{t("ccswitch.config_full_base_url")}</span>
+              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-300">
+                {t("ccswitch.config_live_preview")}
+              </span>
             </div>
-
-            <div className="rounded-2xl border border-slate-200/75 bg-slate-50 px-3 py-2.5 dark:border-neutral-800 dark:bg-neutral-900/55">
-              <div className={labelClassName}>{t("ccswitch.config_channel_group_route")}</div>
-              <div className="mt-1.5 truncate font-mono text-sm font-semibold text-slate-800 dark:text-white/80">
-                {selectedGroupOption ? routeLabel(selectedGroupOption.routePath) : "--"}
-              </div>
+            <div
+              data-testid="ccswitch-config-endpoint-preview"
+              className="overflow-x-auto rounded-2xl border border-slate-200/80 bg-slate-950 px-3 py-2.5 font-mono text-sm text-emerald-200 shadow-inner dark:border-neutral-800"
+            >
+              {fullBaseUrl || "--"}
             </div>
           </div>
         </section>
+
+        <Tabs
+          value={draft.clientType}
+          onValueChange={(next) => setClientType(next as CcSwitchClientType)}
+        >
+          <TabsList aria-label={t("ccswitch.import_client_type")}>
+            {CC_SWITCH_CLIENTS.map((item) => {
+              const label = t(item.labelKey);
+              return (
+                <TabsTrigger key={item.type} value={item.type} aria-label={label}>
+                  <img src={iconByType[item.type]} alt="" className="h-4 w-4" />
+                  {label}
+                </TabsTrigger>
+              );
+            })}
+          </TabsList>
+        </Tabs>
 
         <section className="grid grid-cols-1 gap-3 rounded-3xl border border-slate-200/80 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-950/80 sm:grid-cols-2">
           <label className={fieldClassName}>
@@ -586,11 +603,14 @@ export function CcSwitchImportConfigModal({
           ) : (
             <div className="overflow-x-auto">
               {draft.clientType === "claude" ? (
-                <table className="min-w-[620px] w-full text-left text-sm">
+                <table className="min-w-[760px] w-full text-left text-sm">
                   <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500 dark:bg-neutral-900/60 dark:text-white/45">
                     <tr>
                       <th className="px-4 py-2.5 font-semibold">
                         {t("ccswitch.config_claude_model_role")}
+                      </th>
+                      <th className="px-4 py-2.5 font-semibold">
+                        {t("ccswitch.config_request_model_name")}
                       </th>
                       <th className="px-4 py-2.5 font-semibold">
                         {t("ccswitch.config_actual_channel_model")}
@@ -605,6 +625,19 @@ export function CcSwitchImportConfigModal({
                         <tr key={role}>
                           <td className="px-4 py-3 font-medium text-slate-800 dark:text-white/80">
                             {label}
+                          </td>
+                          <td className="px-4 py-3">
+                            <TextInput
+                              value={mapping?.requestModel ?? ""}
+                              onChange={(event) => {
+                                const requestModel = event.currentTarget.value;
+                                updateClaudeRequestModel(role, requestModel);
+                              }}
+                              aria-label={t("ccswitch.config_claude_request_model_for", {
+                                role: label,
+                              })}
+                              className={controlClassName}
+                            />
                           </td>
                           <td className="px-4 py-3">
                             <SearchableSelect

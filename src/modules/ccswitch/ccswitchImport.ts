@@ -118,17 +118,23 @@ const normalizeModelMappings = (
       if (!targetModel || (!role && !requestModel)) return null;
       return {
         ...(role ? { role } : {}),
-        requestModel: role ? role : requestModel,
+        requestModel: requestModel || targetModel,
         targetModel,
       };
     })
     .filter((mapping): mapping is CcSwitchModelMappingInput => Boolean(mapping));
 };
 
-const getRoleModel = (
+const getRoleRequestModel = (
   mappings: readonly CcSwitchModelMappingInput[],
   role: CcSwitchClaudeModelRole,
-): string => mappings.find((mapping) => mapping.role === role)?.targetModel.trim() ?? "";
+): string => {
+  const mapping = mappings.find((item) => item.role === role);
+  const requestModel = mapping?.requestModel.trim() ?? "";
+  const targetModel = mapping?.targetModel.trim() ?? "";
+  if (!targetModel) return "";
+  return !requestModel || requestModel === role ? targetModel : requestModel;
+};
 
 const getGenericRequestModel = (
   mappings: readonly CcSwitchModelMappingInput[],
@@ -278,11 +284,12 @@ export function buildCcSwitchImportUrl(input: {
       ? ""
       : getGenericRequestModel(modelMappings, String(input.model ?? importConfig.model ?? ""));
   const claudeMainModel =
-    input.clientType === "claude" ? getRoleModel(modelMappings, "main") : "";
+    input.clientType === "claude" ? getRoleRequestModel(modelMappings, "main") : "";
   const explicitModel = String(input.model ?? "").trim();
   const model = (
-    explicitModel ||
+    (input.clientType === "claude" && modelMappings.length > 0 ? "" : explicitModel) ||
     claudeMainModel ||
+    explicitModel ||
     genericMappedModel ||
     String(importConfig.model ?? "").trim()
   ).trim();
@@ -292,9 +299,9 @@ export function buildCcSwitchImportUrl(input: {
 
   if (input.clientType === "claude") {
     params.set("apiKeyField", settings.claude.apiKeyField ?? "ANTHROPIC_API_KEY");
-    const haikuModel = getRoleModel(modelMappings, "haiku");
-    const sonnetModel = getRoleModel(modelMappings, "sonnet");
-    const opusModel = getRoleModel(modelMappings, "opus");
+    const haikuModel = getRoleRequestModel(modelMappings, "haiku");
+    const sonnetModel = getRoleRequestModel(modelMappings, "sonnet");
+    const opusModel = getRoleRequestModel(modelMappings, "opus");
     if (haikuModel) params.set("haikuModel", haikuModel);
     if (sonnetModel) params.set("sonnetModel", sonnetModel);
     if (opusModel) params.set("opusModel", opusModel);

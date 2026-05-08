@@ -93,7 +93,7 @@ const normalizeModelMappings = (value: unknown): CcSwitchModelMapping[] => {
     seen.add(key);
     mappings.push({
       ...(role ? { role } : {}),
-      requestModel: role ? role : requestModel,
+      requestModel,
       targetModel,
     });
   });

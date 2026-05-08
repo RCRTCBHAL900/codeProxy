@@ -128,10 +128,10 @@ describe("CcSwitchImportSettingsPage", () => {
       `${origin}/pro/v1`,
     );
 
-    await waitFor(() => expect(listAvailableModels).toHaveBeenCalledWith({ allowedChannelGroups: ["pro"] }));
     const requestModelInput = await within(dialog).findByLabelText(
       /cc switch request model for deepseek-v4-flash/i,
     );
+    expect(listAvailableModels).not.toHaveBeenCalled();
     expect(
       within(dialog).queryByLabelText(/cc switch request model for gpt-4o-mini/i),
     ).not.toBeInTheDocument();
@@ -165,6 +165,55 @@ describe("CcSwitchImportSettingsPage", () => {
     expect(screen.getByText(/1 saved preset/i)).toBeInTheDocument();
   });
 
+  test("uses the channel group allowed models as the authoritative model list", async () => {
+    listChannelGroups.mockResolvedValue([
+      {
+        name: "chatgpt-pro",
+        description: "ChatGPT Pro route",
+        "path-routes": ["/openai/pro"],
+        "allowed-models": [
+          "codex-auto-review",
+          "gpt-5",
+          "gpt-5.1",
+          "gpt-5.2",
+          "gpt-5.3-codex",
+          "gpt-5.5",
+        ],
+      },
+    ]);
+    listAvailableModels.mockResolvedValue([
+      { id: "codex-auto-review" },
+      { id: "gpt-5" },
+      { id: "unexpected-extra-model" },
+    ]);
+    renderPage();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: /new config/i }));
+
+    const dialog = await screen.findByRole("dialog", { name: /new cc switch config/i });
+    const tabList = within(dialog).getByRole("tablist", { name: /type/i });
+    const groupLabel = within(dialog).getByText(/select channel group/i);
+
+    expect(
+      groupLabel.compareDocumentPosition(tabList) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    await user.click(within(dialog).getByRole("combobox", { name: /select channel group/i }));
+    await user.click(await screen.findByRole("option", { name: /chatgpt-pro.*\/openai\/pro/i }));
+
+    const groupSelect = within(dialog).getByRole("combobox", { name: /select channel group/i });
+    expect(groupSelect).toHaveTextContent("chatgpt-pro");
+    expect(groupSelect).toHaveTextContent("/openai/pro");
+    expect(within(dialog).queryByText(/path address/i)).not.toBeInTheDocument();
+
+    expect(await within(dialog).findByLabelText(/cc switch request model for gpt-5\.5/i)).toBeInTheDocument();
+    expect(
+      within(dialog).queryByLabelText(/cc switch request model for unexpected-extra-model/i),
+    ).not.toBeInTheDocument();
+    expect(listAvailableModels).not.toHaveBeenCalled();
+  });
+
   test("previews the full BaseURL request address from the selected channel group path", async () => {
     renderPage();
     const user = userEvent.setup();
@@ -184,10 +233,13 @@ describe("CcSwitchImportSettingsPage", () => {
   });
 
   test("creates a Claude Code config with main and family default models", async () => {
-    listAvailableModels.mockResolvedValue([
-      { id: "claude-haiku-4-5" },
-      { id: "claude-sonnet-4-5" },
-      { id: "claude-opus-4-1" },
+    listChannelGroups.mockResolvedValue([
+      {
+        name: "pro",
+        description: "Pro route",
+        "path-routes": ["/pro"],
+        "allowed-models": ["claude-haiku-4-5", "claude-sonnet-4-5", "claude-opus-4-1"],
+      },
     ]);
     renderPage();
     const user = userEvent.setup();
@@ -203,6 +255,11 @@ describe("CcSwitchImportSettingsPage", () => {
     expect(within(dialog).getByText(/haiku default model/i)).toBeInTheDocument();
     expect(within(dialog).getByText(/sonnet default model/i)).toBeInTheDocument();
     expect(within(dialog).getByText(/opus default model/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/cc switch request model/i)).toBeInTheDocument();
+
+    const mainRequestModelInput = within(dialog).getByLabelText(/main model request model/i);
+    await user.clear(mainRequestModelInput);
+    await user.type(mainRequestModelInput, "claude-main-router");
 
     await user.type(within(dialog).getByLabelText(/provider name/i), "Relay Claude");
     await user.click(within(dialog).getByRole("combobox", { name: /claude code auth field/i }));
@@ -220,22 +277,22 @@ describe("CcSwitchImportSettingsPage", () => {
           modelMappings: expect.arrayContaining([
             {
               role: "main",
-              requestModel: "main",
+              requestModel: "claude-main-router",
               targetModel: "claude-sonnet-4-5",
             },
             {
               role: "haiku",
-              requestModel: "haiku",
+              requestModel: "claude-haiku-4-5",
               targetModel: "claude-haiku-4-5",
             },
             {
               role: "sonnet",
-              requestModel: "sonnet",
+              requestModel: "claude-sonnet-4-5",
               targetModel: "claude-sonnet-4-5",
             },
             {
               role: "opus",
-              requestModel: "opus",
+              requestModel: "claude-opus-4-1",
               targetModel: "claude-opus-4-1",
             },
           ]),
