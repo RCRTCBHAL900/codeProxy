@@ -127,7 +127,7 @@ describe("ProvidersPage import/export", () => {
     expect(clickSpy).toHaveBeenCalled();
   });
 
-  test("keeps import and refresh in the top toolbar while moving export into the batch actions", async () => {
+  test("keeps provider import, refresh, and export actions together in the batch toolbar", async () => {
     const user = userEvent.setup();
 
     render(
@@ -145,12 +145,9 @@ describe("ProvidersPage import/export", () => {
     await user.click(await screen.findByRole("tab", { name: /Codex/ }));
     expect(await screen.findByText("Codex Main")).toBeInTheDocument();
 
-    const topActions = screen.getByTestId("providers-top-actions");
-    expect(within(topActions).queryByRole("button", { name: /Export JSON/i })).not.toBeInTheDocument();
-    expect(within(topActions).getByRole("button", { name: /Import JSON/i })).toBeInTheDocument();
-    expect(within(topActions).getByRole("button", { name: /Refresh/i })).toBeInTheDocument();
-
     const batchActions = screen.getByTestId("providers-batch-actions");
+    expect(within(batchActions).getByRole("button", { name: /Import JSON/i })).toBeInTheDocument();
+    expect(within(batchActions).getByRole("button", { name: /Refresh/i })).toBeInTheDocument();
     expect(within(batchActions).getByRole("button", { name: /^Export JSON$/i })).toBeInTheDocument();
   });
 

@@ -75,6 +75,8 @@ export interface VirtualTableProps<T> {
   showAllLoadedMessage?: boolean;
   /** Extra row className */
   rowClassName?: string | ((row: T, index: number) => string);
+  /** Let parent scroll containers handle wheel events when this table is already at an edge. */
+  allowWheelPropagationAtBoundary?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -120,6 +122,7 @@ export function VirtualTable<T>({
   emptyText = "",
   showAllLoadedMessage = true,
   rowClassName,
+  allowWheelPropagationAtBoundary = false,
 }: VirtualTableProps<T>) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -278,10 +281,11 @@ export function VirtualTable<T>({
     }
 
     if (wantsY || wantsX) {
+      if (allowWheelPropagationAtBoundary) return;
       e.preventDefault();
       e.stopPropagation();
     }
-  }, []);
+  }, [allowWheelPropagationAtBoundary]);
 
   const dragRef = useRef<null | {
     axis: "x" | "y";
