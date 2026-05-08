@@ -787,8 +787,7 @@ export function ProvidersPage() {
               </TabsTrigger>
             </TabsList>
           </div>
-
-        <TabsContent value="gemini" className="min-h-0 flex-1">
+          <TabsContent value="gemini" className="flex min-h-0 flex-1 flex-col">
           <ProviderKeyListCard
             icon={Globe}
             title={t("providers.gemini_keys")}
@@ -808,7 +807,7 @@ export function ProvidersPage() {
           />
         </TabsContent>
 
-        <TabsContent value="claude" className="min-h-0 flex-1">
+          <TabsContent value="claude" className="flex min-h-0 flex-1 flex-col">
           <ProviderKeyListCard
             icon={Bot}
             title={t("providers.claude_keys")}
@@ -828,7 +827,7 @@ export function ProvidersPage() {
           />
         </TabsContent>
 
-        <TabsContent value="codex" className="min-h-0 flex-1">
+          <TabsContent value="codex" className="flex min-h-0 flex-1 flex-col">
           <ProviderKeyListCard
             icon={FileKey}
             title={t("providers.codex_keys")}
@@ -848,7 +847,7 @@ export function ProvidersPage() {
           />
         </TabsContent>
 
-        <TabsContent value="opencode-go" className="min-h-0 flex-1">
+          <TabsContent value="opencode-go" className="flex min-h-0 flex-1 flex-col">
           <ProviderKeyListCard
             icon={FileKey}
             iconSrc={iconOpenCodeLight}
@@ -871,7 +870,7 @@ export function ProvidersPage() {
           />
         </TabsContent>
 
-        <TabsContent value="vertex" className="min-h-0 flex-1">
+          <TabsContent value="vertex" className="flex min-h-0 flex-1 flex-col">
           <ProviderKeyListCard
             icon={Database}
             title={t("providers.vertex_keys")}
@@ -890,7 +889,7 @@ export function ProvidersPage() {
           />
         </TabsContent>
 
-        <TabsContent value="bedrock" className="min-h-0 flex-1">
+          <TabsContent value="bedrock" className="flex min-h-0 flex-1 flex-col">
           <ProviderKeyListCard
             icon={Cloud}
             title={t("providers.bedrock_keys")}
@@ -910,7 +909,7 @@ export function ProvidersPage() {
           />
         </TabsContent>
 
-        <TabsContent value="openai" className="min-h-0 flex-1">
+          <TabsContent value="openai" className="flex min-h-0 flex-1 flex-col">
           <OpenAIProvidersTab
             providers={openaiProviders}
             openOpenAIEditor={openOpenAIEditor}
@@ -924,7 +923,7 @@ export function ProvidersPage() {
           />
         </TabsContent>
 
-        <TabsContent value="ampcode" className="min-h-0 flex-1">
+          <TabsContent value="ampcode" className="flex min-h-0 flex-1 flex-col">
           <AmpcodePanel
             loading={loading}
             isPending={isPending}

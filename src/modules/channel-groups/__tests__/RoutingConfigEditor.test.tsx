@@ -179,7 +179,7 @@ describe("RoutingConfigEditor", () => {
     expect(screen.getByText("$3 / $15 / $0.3")).toBeInTheDocument();
   });
 
-  test("keeps modal body and tabs fixed while tab content and model list own scrolling", async () => {
+  test("keeps modal body fixed while the basic tab content and model list own scrolling", async () => {
     await i18n.changeLanguage("zh-CN");
     const user = userEvent.setup();
     const loadModelsForChannels = vi.fn(async () => [
@@ -208,7 +208,8 @@ describe("RoutingConfigEditor", () => {
 
     const tabViewport = screen.getByTestId("group-editor-tab-viewport");
     expect(tabViewport).toHaveClass("flex-1");
-    expect(tabViewport).toHaveClass("overflow-y-auto");
+    expect(tabViewport).toHaveClass("overflow-hidden");
+    expect(screen.getByText("分组内调度策略")).toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "模型列表" }));
     expect(await screen.findByTestId("group-editor-model-list")).toHaveClass("overflow-hidden");

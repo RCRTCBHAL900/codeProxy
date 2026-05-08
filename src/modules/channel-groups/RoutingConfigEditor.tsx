@@ -1161,9 +1161,12 @@ export function RoutingConfigEditor({
 
               <div
                 data-testid="group-editor-tab-viewport"
-                className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1"
+                className="mt-4 min-h-0 flex-1 overflow-hidden"
               >
-                <TabsContent value="basic" className="space-y-5">
+                <TabsContent
+                  value="basic"
+                  className="h-full min-h-0 overflow-y-auto pr-1 space-y-5"
+                >
                   <Field
                     label={t("channel_groups_page.routing_strategy_label")}
                     tooltip={t("channel_groups_page.routing_strategy_tooltip")}
@@ -1274,7 +1277,7 @@ export function RoutingConfigEditor({
                   />
                 </TabsContent>
 
-                <TabsContent value="models" className="flex h-full min-h-0 flex-col gap-3">
+                <TabsContent value="models" className="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="space-y-1">
                       <div className="text-sm font-semibold text-slate-900 dark:text-white">

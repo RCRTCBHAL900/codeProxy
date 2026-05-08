@@ -44,7 +44,7 @@ export function OpenAIProvidersTab({
       title={t("providers.openai_compatible")}
       description={t("providers.claude_desc")}
       className="flex h-full min-h-0 flex-col"
-      bodyClassName="min-h-0 flex-1"
+      bodyClassName="min-h-0 flex flex-1 flex-col"
       actions={
         <Button variant="primary" size="sm" onClick={() => openOpenAIEditor(null)}>
           <Plus size={14} />
