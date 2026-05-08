@@ -543,7 +543,7 @@ export function VirtualTable<T>({
   return (
     <div
       aria-busy={loading || loadingMore ? true : undefined}
-      className={`${height} ${minHeight} group relative isolate grid min-w-0 grid-cols-[minmax(0,1fr)_0.75rem] overflow-hidden`}
+      className={`${height} ${minHeight} group relative isolate grid min-w-0 ${vThumb ? "grid-cols-[minmax(0,1fr)_0.75rem]" : "grid-cols-1"} overflow-hidden`}
     >
       <div
         data-vt-header-backdrop
@@ -701,16 +701,16 @@ export function VirtualTable<T>({
         )}
       </div>
 
-      <div
-        data-vt-scrollbar-gutter
-        className="relative z-30 col-start-2 row-start-1 h-full w-3 justify-self-end"
-      >
+      {vThumb ? (
         <div
-          data-vt-header-gutter
-          className="absolute inset-x-0 top-0 rounded-r-xl bg-slate-100 dark:bg-neutral-800"
-          style={{ height: headerHeight }}
-        />
-        {vThumb ? (
+          data-vt-scrollbar-gutter
+          className="relative z-30 col-start-2 row-start-1 h-full w-3 justify-self-end"
+        >
+          <div
+            data-vt-header-gutter
+            className="absolute inset-x-0 top-0 rounded-r-xl bg-slate-100 dark:bg-neutral-800"
+            style={{ height: headerHeight }}
+          />
           <div
             data-vt-scrollbar="y"
             className="pointer-events-auto absolute right-0 z-30 w-2 opacity-0 transition-opacity hover:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
@@ -727,8 +727,8 @@ export function VirtualTable<T>({
               onPointerCancel={handleThumbPointerUp}
             />
           </div>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       {hThumb ? (
         <div
