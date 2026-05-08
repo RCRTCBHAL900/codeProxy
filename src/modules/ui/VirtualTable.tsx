@@ -560,7 +560,7 @@ export function VirtualTable<T>({
       >
         <div
           data-vt-header-overlay
-          className="pointer-events-none sticky left-0 top-0 z-10 w-full rounded-l-xl bg-slate-100 dark:bg-neutral-800"
+          className={`pointer-events-none sticky left-0 top-0 z-10 w-full ${vThumb ? "rounded-l-xl" : "rounded-xl"} bg-slate-100 dark:bg-neutral-800`}
           style={{ height: headerHeight, marginBottom: -headerHeight }}
         />
         <table
