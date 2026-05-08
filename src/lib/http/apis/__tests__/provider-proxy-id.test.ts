@@ -41,6 +41,7 @@ describe("provider proxy id serialization", () => {
         apiKeyEntries: [
           {
             apiKey: "sk-openai",
+            disabled: true,
             proxyId: "hk",
             proxyUrl: "http://fallback.example:7890",
           },
@@ -50,6 +51,7 @@ describe("provider proxy id serialization", () => {
       expect.objectContaining({
         "api-key-entries": [
           expect.objectContaining({
+            disabled: true,
             "proxy-id": "hk",
             "proxy-url": "http://fallback.example:7890",
           }),

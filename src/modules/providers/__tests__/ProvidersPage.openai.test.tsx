@@ -1,7 +1,7 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ProvidersPage } from "@/modules/providers/ProvidersPage";
 import { ThemeProvider } from "@/modules/ui/ThemeProvider";
 import { ToastProvider } from "@/modules/ui/ToastProvider";
@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   getVertexConfigs: vi.fn(async () => []),
   getOpenAIProviders: vi.fn(async () => []),
   saveCodexConfigs: vi.fn(async (_configs: unknown[]) => ({})),
+  saveOpenAIProviders: vi.fn(async (_configs: unknown[]) => ({})),
   getEntityStats: vi.fn(async () => ({ source: [] })),
   apiKeyEntriesList: vi.fn(async () => []),
   channelGroupsList: vi.fn(async () => []),
@@ -31,6 +32,7 @@ vi.mock("@/lib/http/apis", async (importOriginal) => {
       getVertexConfigs: mocks.getVertexConfigs,
       getOpenAIProviders: mocks.getOpenAIProviders,
       saveCodexConfigs: mocks.saveCodexConfigs,
+      saveOpenAIProviders: mocks.saveOpenAIProviders,
     },
     usageApi: {
       ...mod.usageApi,
@@ -58,6 +60,10 @@ vi.mock("@/lib/http/apis/proxies", () => ({
 }));
 
 describe("ProvidersPage openai tab", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   beforeEach(() => {
     mocks.getGeminiKeys.mockReset();
     mocks.getClaudeConfigs.mockReset();
@@ -65,6 +71,7 @@ describe("ProvidersPage openai tab", () => {
     mocks.getVertexConfigs.mockReset();
     mocks.getOpenAIProviders.mockReset();
     mocks.saveCodexConfigs.mockReset();
+    mocks.saveOpenAIProviders.mockReset();
     mocks.getEntityStats.mockReset();
     mocks.apiKeyEntriesList.mockReset();
     mocks.channelGroupsList.mockReset();
@@ -75,6 +82,7 @@ describe("ProvidersPage openai tab", () => {
     mocks.getCodexConfigs.mockImplementation(async () => []);
     mocks.getVertexConfigs.mockImplementation(async () => []);
     mocks.saveCodexConfigs.mockImplementation(async () => ({}));
+    mocks.saveOpenAIProviders.mockImplementation(async () => ({}));
     mocks.apiKeyEntriesList.mockImplementation(async () => []);
     mocks.channelGroupsList.mockImplementation(async () => []);
     mocks.proxiesList.mockImplementation(async () => [
@@ -181,6 +189,58 @@ describe("ProvidersPage openai tab", () => {
           name: "Codex Main",
           apiKey: "sk-codex-provider-1234567890",
           proxyId: "jp",
+        }),
+      ]);
+    });
+  });
+
+  test("toggles an OpenAI Compatible key entry without removing it", async () => {
+    const user = userEvent.setup();
+    const provider = {
+      name: "OpenAI Main",
+      baseUrl: "https://example.com/v1",
+      apiKeyEntries: [
+        { apiKey: "sk-openai-enabled-1234567890" },
+        { apiKey: "sk-openai-disabled-1234567890", disabled: true },
+      ],
+      models: [{ name: "gpt-4.1" }],
+    } as any;
+    mocks.getOpenAIProviders.mockImplementation(async () => [provider] as any);
+
+    render(
+      <MemoryRouter initialEntries={["/ai-providers/openai"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/ai-providers/*" element={<ProvidersPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("OpenAI Main")).toBeInTheDocument();
+    const enabledSwitch = (await screen.findAllByRole("switch", { name: /Enable key entry 1/i }))[0];
+    const disabledSwitch = (await screen.findAllByRole("switch", { name: /Enable key entry 2/i }))[0];
+    expect(enabledSwitch).toHaveAttribute("aria-checked", "true");
+    expect(disabledSwitch).toHaveAttribute("aria-checked", "false");
+
+    await user.click(enabledSwitch);
+
+    await waitFor(() => {
+      expect(mocks.saveOpenAIProviders).toHaveBeenCalledWith([
+        expect.objectContaining({
+          name: "OpenAI Main",
+          apiKeyEntries: [
+            expect.objectContaining({
+              apiKey: "sk-openai-enabled-1234567890",
+              disabled: true,
+            }),
+            expect.objectContaining({
+              apiKey: "sk-openai-disabled-1234567890",
+              disabled: true,
+            }),
+          ],
         }),
       ]);
     });

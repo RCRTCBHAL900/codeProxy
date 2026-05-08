@@ -322,6 +322,7 @@ export function ProvidersPage() {
     openOpenAIEditor,
     saveOpenAIDraft,
     deleteOpenAIProvider,
+    toggleOpenAIKeyEntryEnabled,
     discoverModels,
     applyDiscoveredModels,
   } = useOpenAIProviderEditor({
@@ -916,6 +917,9 @@ export function ProvidersPage() {
             getKeyEntryStats={getOpenAIKeyEntryStats}
             getProviderStats={getOpenAIProviderStats}
             getProviderStatusBar={getOpenAIProviderStatusBar}
+            onToggleKeyEntryEnabled={(providerIndex, entryIndex, enabled) =>
+              void toggleOpenAIKeyEntryEnabled(providerIndex, entryIndex, enabled)
+            }
             selectedKeys={selectedExportKeySet}
             onToggleSelected={toggleExportSelection}
           />

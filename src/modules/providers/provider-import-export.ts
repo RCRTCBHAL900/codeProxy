@@ -125,6 +125,7 @@ const normalizeEntryList = (
       const headers = sortRecord(normalizeHeaders(entry.headers));
       return {
         apiKey,
+        ...(entry.disabled ? { disabled: true } : {}),
         ...(normalizeString(entry.proxyUrl) ? { proxyUrl: normalizeString(entry.proxyUrl)! } : {}),
         ...(normalizeString(entry.proxyId) ? { proxyId: normalizeString(entry.proxyId)! } : {}),
         ...(headers ? { headers } : {}),

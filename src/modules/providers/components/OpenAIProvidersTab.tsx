@@ -5,6 +5,7 @@ import { Button } from "@/modules/ui/Button";
 import { Card } from "@/modules/ui/Card";
 import { EmptyState } from "@/modules/ui/EmptyState";
 import { ProviderStatusBar } from "@/modules/providers/ProviderStatusBar";
+import { ToggleSwitch } from "@/modules/ui/ToggleSwitch";
 
 interface OpenAIProvidersTabProps {
   providers: OpenAIProvider[];
@@ -22,6 +23,7 @@ interface OpenAIProvidersTabProps {
     totalSuccess: number;
     totalFailure: number;
   };
+  onToggleKeyEntryEnabled?: (providerIndex: number, entryIndex: number, enabled: boolean) => void;
   selectedKeys?: Set<string>;
   onToggleSelected?: (key: string, checked: boolean) => void;
 }
@@ -34,6 +36,7 @@ export function OpenAIProvidersTab({
   getKeyEntryStats,
   getProviderStats,
   getProviderStatusBar,
+  onToggleKeyEntryEnabled,
   selectedKeys,
   onToggleSelected,
 }: OpenAIProvidersTabProps) {
@@ -113,6 +116,7 @@ export function OpenAIProvidersTab({
                         <div className="space-y-1">
                           {provider.apiKeyEntries.map((entry, entryIndex) => {
                             const entryStats = getKeyEntryStats(entry);
+                            const entryEnabled = entry.disabled !== true;
                             return (
                               <div
                                 key={`${entry.apiKey}:${entryIndex}`}
@@ -128,13 +132,32 @@ export function OpenAIProvidersTab({
                                     </p>
                                   ) : null}
                                 </div>
-                                <div className="flex items-center gap-2 tabular-nums">
+                                <div className="flex flex-wrap items-center gap-2 tabular-nums">
+                                  <span
+                                    className={[
+                                      "rounded-full px-2 py-0.5 font-semibold",
+                                      entryEnabled
+                                        ? "bg-emerald-600/10 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200"
+                                        : "bg-amber-500/15 text-amber-700 dark:text-amber-200",
+                                    ].join(" ")}
+                                  >
+                                    {entryEnabled ? t("providers.enabled") : t("providers.disabled")}
+                                  </span>
                                   <span className="rounded-full bg-emerald-600/10 px-2 py-0.5 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200">
                                     {t("providers.success_stats", { count: entryStats.success })}
                                   </span>
                                   <span className="rounded-full bg-rose-600/10 px-2 py-0.5 text-rose-700 dark:bg-rose-500/15 dark:text-rose-200">
                                     {t("providers.failed_stats", { count: entryStats.failure })}
                                   </span>
+                                  {onToggleKeyEntryEnabled ? (
+                                    <ToggleSwitch
+                                      checked={entryEnabled}
+                                      ariaLabel={`${t("providers.enable_key_entry")} ${entryIndex + 1}`}
+                                      onCheckedChange={(enabled) =>
+                                        onToggleKeyEntryEnabled(idx, entryIndex, enabled)
+                                      }
+                                    />
+                                  ) : null}
                                 </div>
                               </div>
                             );

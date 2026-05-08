@@ -85,6 +85,7 @@ export function useOpenAIProviderEditor({
         const proxyId = entry.proxyId.trim();
         return {
           apiKey,
+          ...(entry.disabled ? { disabled: true } : {}),
           ...(proxyUrl ? { proxyUrl } : {}),
           ...(proxyId ? { proxyId } : {}),
           ...(entryHeaders ? { headers: entryHeaders } : {}),
@@ -171,6 +172,51 @@ export function useOpenAIProviderEditor({
     [notify, openaiProviders, setOpenaiProviders, t],
   );
 
+  const toggleOpenAIKeyEntryEnabled = useCallback(
+    async (providerIndex: number, entryIndex: number, enabled: boolean) => {
+      const provider = openaiProviders[providerIndex];
+      const entry = provider?.apiKeyEntries?.[entryIndex];
+      if (!provider || !entry) return;
+
+      const prev = openaiProviders;
+      const next = prev.map((item, itemIndex) => {
+        if (itemIndex !== providerIndex) return item;
+        return {
+          ...item,
+          apiKeyEntries: (item.apiKeyEntries ?? []).map((keyEntry, keyIndex) =>
+            keyIndex === entryIndex
+              ? { ...keyEntry, ...(enabled ? { disabled: undefined } : { disabled: true }) }
+              : keyEntry,
+          ),
+        };
+      });
+
+      setOpenaiProviders(next);
+      try {
+        await providersApi.saveOpenAIProviders(next);
+        notify({
+          type: "success",
+          message: enabled ? t("providers.toggle_enabled") : t("providers.toggle_disabled"),
+        });
+        startRefreshTransition(() => void refreshAll());
+      } catch (err: unknown) {
+        setOpenaiProviders(prev);
+        notify({
+          type: "error",
+          message: err instanceof Error ? err.message : t("providers.update_failed"),
+        });
+      }
+    },
+    [
+      notify,
+      openaiProviders,
+      refreshAll,
+      setOpenaiProviders,
+      startRefreshTransition,
+      t,
+    ],
+  );
+
   const discoverModels = useCallback(async () => {
     const baseUrl = openaiDraft.baseUrl.trim();
     if (!baseUrl) {
@@ -253,6 +299,7 @@ export function useOpenAIProviderEditor({
     openOpenAIEditor,
     saveOpenAIDraft,
     deleteOpenAIProvider,
+    toggleOpenAIKeyEntryEnabled,
     discoverModels,
     applyDiscoveredModels,
   };

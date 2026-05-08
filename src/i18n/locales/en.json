@@ -3039,6 +3039,7 @@
     "priority_label": "Priority (optional)",
     "test_model_label": "Test model (optional)",
     "api_key_entries": "API key entries",
+    "enable_key_entry": "Enable key entry",
     "key_number": "Key #{{num}}",
     "proxy_url_optional": "Proxy URL (optional)",
     "models_label": "Models",
