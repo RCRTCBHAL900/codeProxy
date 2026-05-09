@@ -7,6 +7,13 @@ import {
 } from "@/modules/ccswitch/ccswitchImportSettings";
 
 export type CcSwitchClientType = "claude" | "codex" | "gemini";
+export type CcSwitchClaudeModelRole = "main" | "haiku" | "sonnet" | "opus";
+
+export interface CcSwitchModelMappingInput {
+  requestModel: string;
+  targetModel: string;
+  role?: CcSwitchClaudeModelRole;
+}
 
 export interface CcSwitchClientConfig {
   type: CcSwitchClientType;
@@ -91,6 +98,59 @@ const encodeBase64 = (value: string): string => {
     return bytes.toString("base64");
   }
   throw new Error("Base64 encoder is unavailable");
+};
+
+const normalizeModelMappings = (
+  mappings: readonly CcSwitchModelMappingInput[] | undefined,
+): CcSwitchModelMappingInput[] => {
+  if (!Array.isArray(mappings)) return [];
+  return mappings
+    .map((mapping) => {
+      const role =
+        mapping.role === "main" ||
+        mapping.role === "haiku" ||
+        mapping.role === "sonnet" ||
+        mapping.role === "opus"
+          ? mapping.role
+          : undefined;
+      const requestModel = String(mapping.requestModel ?? "").trim();
+      const targetModel = String(mapping.targetModel ?? "").trim();
+      if (!targetModel || (!role && !requestModel)) return null;
+      return {
+        ...(role ? { role } : {}),
+        requestModel: requestModel || targetModel,
+        targetModel,
+      };
+    })
+    .filter((mapping): mapping is CcSwitchModelMappingInput => Boolean(mapping));
+};
+
+const getRoleRequestModel = (
+  mappings: readonly CcSwitchModelMappingInput[],
+  role: CcSwitchClaudeModelRole,
+): string => {
+  const mapping = mappings.find((item) => item.role === role);
+  const requestModel = mapping?.requestModel.trim() ?? "";
+  const targetModel = mapping?.targetModel.trim() ?? "";
+  if (!targetModel) return "";
+  return !requestModel || requestModel === role ? targetModel : requestModel;
+};
+
+const getGenericRequestModel = (
+  mappings: readonly CcSwitchModelMappingInput[],
+  selectedModel: string,
+): string => {
+  const genericMappings = mappings.filter((mapping) => !mapping.role);
+  if (genericMappings.length === 0) return "";
+  const selected = selectedModel.trim();
+  const exactMatch = selected
+    ? genericMappings.find(
+        (mapping) =>
+          mapping.requestModel.trim().toLowerCase() === selected.toLowerCase() ||
+          mapping.targetModel.trim().toLowerCase() === selected.toLowerCase(),
+      )
+    : undefined;
+  return (exactMatch ?? genericMappings[0])?.requestModel.trim() ?? "";
 };
 
 export function buildCcSwitchUsageScript(): string {
@@ -188,6 +248,7 @@ export function buildCcSwitchImportUrl(input: {
   enabled?: boolean;
   providerName: string;
   model?: string;
+  modelMappings?: readonly CcSwitchModelMappingInput[];
   models?: readonly string[];
   settings?: CcSwitchImportSettingsInput;
 }): string {
@@ -217,13 +278,33 @@ export function buildCcSwitchImportUrl(input: {
     usageAutoInterval: String(importConfig.usageAutoInterval),
   });
 
-  const model = String(input.model ?? importConfig.model ?? "").trim();
+  const modelMappings = normalizeModelMappings(input.modelMappings);
+  const genericMappedModel =
+    input.clientType === "claude"
+      ? ""
+      : getGenericRequestModel(modelMappings, String(input.model ?? importConfig.model ?? ""));
+  const claudeMainModel =
+    input.clientType === "claude" ? getRoleRequestModel(modelMappings, "main") : "";
+  const explicitModel = String(input.model ?? "").trim();
+  const model = (
+    (input.clientType === "claude" && modelMappings.length > 0 ? "" : explicitModel) ||
+    claudeMainModel ||
+    explicitModel ||
+    genericMappedModel ||
+    String(importConfig.model ?? "").trim()
+  ).trim();
   if (model) {
     params.set("model", model);
   }
 
   if (input.clientType === "claude") {
     params.set("apiKeyField", settings.claude.apiKeyField ?? "ANTHROPIC_API_KEY");
+    const haikuModel = getRoleRequestModel(modelMappings, "haiku");
+    const sonnetModel = getRoleRequestModel(modelMappings, "sonnet");
+    const opusModel = getRoleRequestModel(modelMappings, "opus");
+    if (haikuModel) params.set("haikuModel", haikuModel);
+    if (sonnetModel) params.set("sonnetModel", sonnetModel);
+    if (opusModel) params.set("opusModel", opusModel);
   }
 
   return `ccswitch://v1/import?${params.toString()}`;

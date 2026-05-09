@@ -501,6 +501,7 @@ export function useVisualConfig() {
             : DEFAULT_VISUAL_VALUES.autoUpdateDockerImage,
 
         proxyUrl: typeof parsed["proxy-url"] === "string" ? parsed["proxy-url"] : "",
+        preferIPv4: Boolean(parsed["prefer-ipv4"]),
         forceModelPrefix: Boolean(parsed["force-model-prefix"]),
         requestRetry: String(parsed["request-retry"] ?? ""),
         maxRetryInterval: String(parsed["max-retry-interval"] ?? ""),
@@ -620,6 +621,7 @@ export function useVisualConfig() {
         }
 
         setString(parsed, "proxy-url", values.proxyUrl);
+        setBoolean(parsed, "prefer-ipv4", values.preferIPv4);
         setBoolean(parsed, "force-model-prefix", values.forceModelPrefix);
         setIntFromString(parsed, "request-retry", values.requestRetry);
         setIntFromString(parsed, "max-retry-interval", values.maxRetryInterval);

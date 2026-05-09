@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Bot, Cloud, Database, FileKey, Globe, RefreshCw } from "lucide-react";
+import { Bot, Cloud, Database, Download, FileKey, Globe, RefreshCw, Upload } from "lucide-react";
 import iconGemini from "@/assets/icons/gemini.svg";
 import iconClaude from "@/assets/icons/claude.svg";
 import iconCodex from "@/assets/icons/codex.svg";
@@ -17,8 +17,10 @@ import { proxiesApi, type ProxyPoolEntry } from "@/lib/http/apis/proxies";
 import type { BedrockProviderConfig, OpenAIProvider, ProviderSimpleConfig } from "@/lib/http/types";
 import { Button } from "@/modules/ui/Button";
 import { ConfirmModal } from "@/modules/ui/ConfirmModal";
+import { Modal } from "@/modules/ui/Modal";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/modules/ui/Tabs";
 import { useToast } from "@/modules/ui/ToastProvider";
+import { downloadTextAsFile } from "@/modules/auth-files/helpers/authFilesPageUtils";
 import { AmpcodePanel } from "@/modules/providers/components/AmpcodePanel";
 import { OpenAIProviderModal } from "@/modules/providers/components/OpenAIProviderModal";
 import { OpenAIProvidersTab } from "@/modules/providers/components/OpenAIProvidersTab";
@@ -35,7 +37,35 @@ import {
   readString,
   type AmpMappingEntry,
 } from "@/modules/providers/providers-helpers";
+import {
+  createProviderExportText,
+  prepareProviderImport,
+  type ProviderImportDiff,
+  type ProviderImportKind,
+} from "@/modules/providers/provider-import-export";
 import { summarizeProviderAccess } from "@/modules/providers/provider-access";
+
+type ProviderTab =
+  | "gemini"
+  | "claude"
+  | "codex"
+  | "opencode-go"
+  | "vertex"
+  | "bedrock"
+  | "openai"
+  | "ampcode";
+
+const getProviderSelectionKey = (
+  kind: ProviderImportKind,
+  item: ProviderSimpleConfig | BedrockProviderConfig | OpenAIProvider,
+) =>
+  kind === "openai"
+    ? String((item as OpenAIProvider).name ?? "")
+        .trim()
+        .toLowerCase()
+    : String((item as ProviderSimpleConfig).apiKey ?? "")
+        .trim()
+        .toLowerCase();
 
 export function ProvidersPage() {
   const { t } = useTranslation();
@@ -45,9 +75,7 @@ export function ProvidersPage() {
   const navigate = useNavigate();
   const { getEntry: getLatencyEntry, checkLatency } = useProviderLatency();
 
-  const [tab, setTab] = useState<
-    "gemini" | "claude" | "codex" | "opencode-go" | "vertex" | "bedrock" | "openai" | "ampcode"
-  >("gemini");
+  const [tab, setTab] = useState<ProviderTab>("gemini");
   const [loading, setLoading] = useState(true);
 
   const [geminiKeys, setGeminiKeys] = useState<ProviderSimpleConfig[]>([]);
@@ -79,6 +107,15 @@ export function ProvidersPage() {
     | { type: "deleteOpenAI"; index: number }
   >(null);
   const handledRouteRef = useRef("");
+  const importInputRef = useRef<HTMLInputElement | null>(null);
+  const [importPreview, setImportPreview] = useState<{
+    kind: ProviderImportKind;
+    nextItems: ProviderSimpleConfig[] | BedrockProviderConfig[] | OpenAIProvider[];
+    diff: ProviderImportDiff;
+    filename: string;
+  } | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [selectedExportKeys, setSelectedExportKeys] = useState<string[]>([]);
 
   const refreshTab = useCallback(
     async (tabId: typeof tab) => {
@@ -285,6 +322,7 @@ export function ProvidersPage() {
     openOpenAIEditor,
     saveOpenAIDraft,
     deleteOpenAIProvider,
+    toggleOpenAIKeyEntryEnabled,
     discoverModels,
     applyDiscoveredModels,
   } = useOpenAIProviderEditor({
@@ -404,9 +442,208 @@ export function ProvidersPage() {
     [notify],
   );
 
+  const getImportKind = useCallback((): ProviderImportKind | null => {
+    if (tab === "ampcode") return null;
+    return tab;
+  }, [tab]);
+
+  const getCurrentItems = useCallback(
+    (kind: ProviderImportKind) => {
+      switch (kind) {
+        case "gemini":
+          return geminiKeys;
+        case "claude":
+          return claudeKeys;
+        case "codex":
+          return codexKeys;
+        case "opencode-go":
+          return openCodeGoKeys;
+        case "vertex":
+          return vertexKeys;
+        case "bedrock":
+          return bedrockKeys;
+        case "openai":
+          return openaiProviders;
+      }
+    },
+    [
+      bedrockKeys,
+      claudeKeys,
+      codexKeys,
+      geminiKeys,
+      openCodeGoKeys,
+      openaiProviders,
+      vertexKeys,
+    ],
+  );
+
+  const currentImportKind = getImportKind();
+  const currentTabItems = useMemo(
+    () => (currentImportKind ? getCurrentItems(currentImportKind) : []),
+    [currentImportKind, getCurrentItems],
+  );
+  const currentSelectableKeys = useMemo(
+    () =>
+      currentImportKind
+        ? currentTabItems.map((item) =>
+            getProviderSelectionKey(
+              currentImportKind,
+              item as ProviderSimpleConfig | BedrockProviderConfig | OpenAIProvider,
+            ),
+          )
+        : [],
+    [currentImportKind, currentTabItems],
+  );
+  const selectedExportKeySet = useMemo(() => new Set(selectedExportKeys), [selectedExportKeys]);
+  const selectedExportCount = selectedExportKeys.length;
+  const allCurrentSelected =
+    currentSelectableKeys.length > 0 &&
+    currentSelectableKeys.every((key) => selectedExportKeySet.has(key));
+
+  const saveImportedItems = useCallback(
+    async (
+      kind: ProviderImportKind,
+      items: ProviderSimpleConfig[] | BedrockProviderConfig[] | OpenAIProvider[],
+    ) => {
+      switch (kind) {
+        case "gemini":
+          await providersApi.saveGeminiKeys(items as ProviderSimpleConfig[]);
+          return;
+        case "claude":
+          await providersApi.saveClaudeConfigs(items as ProviderSimpleConfig[]);
+          return;
+        case "codex":
+          await providersApi.saveCodexConfigs(items as ProviderSimpleConfig[]);
+          return;
+        case "opencode-go":
+          await providersApi.saveOpenCodeGoConfigs(items as ProviderSimpleConfig[]);
+          return;
+        case "vertex":
+          await providersApi.saveVertexConfigs(items as ProviderSimpleConfig[]);
+          return;
+        case "bedrock":
+          await providersApi.saveBedrockConfigs(items as BedrockProviderConfig[]);
+          return;
+        case "openai":
+          await providersApi.saveOpenAIProviders(items as OpenAIProvider[]);
+          return;
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    setSelectedExportKeys([]);
+  }, [tab]);
+
+  useEffect(() => {
+    const selectableKeySet = new Set(currentSelectableKeys);
+    setSelectedExportKeys((prev) => prev.filter((key) => selectableKeySet.has(key)));
+  }, [currentSelectableKeys]);
+
+  const toggleExportSelection = useCallback((key: string, checked: boolean) => {
+    setSelectedExportKeys((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(key);
+      else next.delete(key);
+      return Array.from(next);
+    });
+  }, []);
+
+  const selectAllCurrentItems = useCallback(
+    (checked: boolean) => {
+      if (!checked) {
+        setSelectedExportKeys([]);
+        return;
+      }
+      setSelectedExportKeys(currentSelectableKeys);
+    },
+    [currentSelectableKeys],
+  );
+
+  const handleExport = useCallback(() => {
+    const kind = currentImportKind;
+    if (!kind) return;
+    downloadTextAsFile(
+      createProviderExportText(kind, getCurrentItems(kind) as never),
+      `${kind}-providers.json`,
+    );
+  }, [currentImportKind, getCurrentItems]);
+
+  const handleExportSelected = useCallback(() => {
+    const kind = currentImportKind;
+    if (!kind || selectedExportCount === 0) return;
+    const selectedItems = currentTabItems.filter((item) =>
+      selectedExportKeySet.has(
+        getProviderSelectionKey(
+          kind,
+          item as ProviderSimpleConfig | BedrockProviderConfig | OpenAIProvider,
+        ),
+      ),
+    );
+    downloadTextAsFile(
+      createProviderExportText(kind, selectedItems as never),
+      `${kind}-providers-selected.json`,
+    );
+  }, [currentImportKind, currentTabItems, selectedExportCount, selectedExportKeySet]);
+
+  const handleImportFile = useCallback(
+    async (file: File | null) => {
+      const kind = currentImportKind;
+      if (!kind || !file) return;
+      if (!file.name.toLowerCase().endsWith(".json") && file.type !== "application/json") {
+        notify({ type: "error", message: t("upload_error_json") });
+        return;
+      }
+
+      try {
+        const preview = prepareProviderImport(kind, await file.text(), getCurrentItems(kind) as never);
+        setImportPreview({
+          kind,
+          nextItems: preview.nextItems,
+          diff: preview.diff,
+          filename: file.name,
+        });
+      } catch (error: unknown) {
+        notify({
+          type: "error",
+          message:
+            error instanceof Error && error.message === "provider_mismatch"
+              ? t("providers.import_provider_mismatch")
+              : t("providers.import_invalid"),
+        });
+      }
+    },
+    [currentImportKind, getCurrentItems, notify, t],
+  );
+
+  const confirmImport = useCallback(async () => {
+    if (!importPreview || !importPreview.diff.hasChanges) return;
+    setImporting(true);
+    try {
+      await saveImportedItems(importPreview.kind, importPreview.nextItems);
+      notify({
+        type: "success",
+        message: t("providers.import_success", { filename: importPreview.filename }),
+      });
+      setImportPreview(null);
+      startTransition(() => void refreshAll());
+    } catch (error: unknown) {
+      notify({
+        type: "error",
+        message: error instanceof Error ? error.message : t("providers.save_failed"),
+      });
+    } finally {
+      setImporting(false);
+    }
+  }, [importPreview, notify, refreshAll, saveImportedItems, startTransition, t]);
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div
+      data-testid="providers-page-shell"
+      className="flex h-[calc(100dvh-112px)] min-h-0 flex-col gap-6 overflow-hidden"
+    >
+      <div className="flex flex-wrap items-center gap-3">
         <div className="space-y-0.5">
           <h2 className="text-base font-semibold text-slate-900 dark:text-white">
             {t("providers.config_overview")}
@@ -415,9 +652,84 @@ export function ProvidersPage() {
             {t("providers.config_overview_desc")}
           </p>
         </div>
+      </div>
+
+      <div
+        data-testid="providers-batch-actions"
+        className="flex flex-wrap items-center gap-1.5 rounded-2xl bg-slate-50/80 px-2 py-1.5 transition-colors duration-200 ease-out dark:bg-white/[0.03]"
+      >
+        {currentImportKind ? (
+          <>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept="application/json,.json"
+              aria-label={t("providers.import_json")}
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0] ?? null;
+                void handleImportFile(file);
+                event.currentTarget.value = "";
+              }}
+            />
+            <Button
+              variant="secondary"
+              size="sm"
+              className="!h-8 px-2 text-xs"
+              onClick={() => importInputRef.current?.click()}
+              disabled={loading}
+            >
+              <Upload size={14} />
+              {t("providers.import_json")}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="!h-8 px-2 text-xs"
+              onClick={handleExport}
+              disabled={currentTabItems.length === 0}
+            >
+              <Download size={14} />
+              {t("providers.export_json")}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="!h-8 px-2 text-xs"
+              onClick={() => selectAllCurrentItems(!allCurrentSelected)}
+              disabled={currentSelectableKeys.length === 0}
+            >
+              {allCurrentSelected
+                ? t("providers.batch_deselect_all")
+                : t("providers.batch_select_all")}
+            </Button>
+            <span className="ml-1 text-xs font-medium text-slate-600 dark:text-white/65">
+              {t("providers.batch_selected", { count: selectedExportCount })}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="!h-8 px-2 text-xs"
+              onClick={() => setSelectedExportKeys([])}
+              disabled={selectedExportCount === 0}
+            >
+              {t("providers.batch_clear")}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="!h-8 px-2 text-xs"
+              onClick={handleExportSelected}
+              disabled={selectedExportCount === 0}
+            >
+              {t("providers.export_selected_json")}
+            </Button>
+          </>
+        ) : null}
         <Button
           variant="secondary"
           size="sm"
+          className="!h-8 px-2 text-xs"
           onClick={() => void refreshTab(tab)}
           disabled={loading}
         >
@@ -434,45 +746,47 @@ export function ProvidersPage() {
           void refreshTab(nextTab);
         }}
       >
-        <TabsList>
-          <TabsTrigger value="gemini">
-            <img src={iconGemini} alt="" className="size-4" />
-            Gemini
-          </TabsTrigger>
-          <TabsTrigger value="claude">
-            <img src={iconClaude} alt="" className="size-4" />
-            Claude
-          </TabsTrigger>
-          <TabsTrigger value="codex">
-            <img src={iconCodex} alt="" className="size-4 dark:hidden" />
-            <img src={iconCodex} alt="" className="hidden size-4 dark:block" />
-            Codex
-          </TabsTrigger>
-          <TabsTrigger value="opencode-go">
-            <img src={iconOpenCodeLight} alt="" className="size-4 dark:hidden" />
-            <img src={iconOpenCodeDark} alt="" className="hidden size-4 dark:block" />
-            OpenCode Go
-          </TabsTrigger>
-          <TabsTrigger value="vertex">
-            <img src={iconVertex} alt="" className="size-4" />
-            Vertex
-          </TabsTrigger>
-          <TabsTrigger value="bedrock">
-            <Cloud size={16} />
-            Bedrock
-          </TabsTrigger>
-          <TabsTrigger value="openai">
-            <img src={iconOpenai} alt="" className="size-4 dark:hidden" />
-            <img src={iconOpenai} alt="" className="hidden size-4 dark:block" />
-            {t("providers.openai_compatible")}
-          </TabsTrigger>
-          <TabsTrigger value="ampcode">
-            <img src={iconAmp} alt="" className="size-4" />
-            Ampcode
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="gemini" className="mt-6">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
+          <div className="flex shrink-0">
+            <TabsList>
+              <TabsTrigger value="gemini">
+                <img src={iconGemini} alt="" className="size-4" />
+                Gemini
+              </TabsTrigger>
+              <TabsTrigger value="claude">
+                <img src={iconClaude} alt="" className="size-4" />
+                Claude
+              </TabsTrigger>
+              <TabsTrigger value="codex">
+                <img src={iconCodex} alt="" className="size-4 dark:hidden" />
+                <img src={iconCodex} alt="" className="hidden size-4 dark:block" />
+                Codex
+              </TabsTrigger>
+              <TabsTrigger value="opencode-go">
+                <img src={iconOpenCodeLight} alt="" className="size-4 dark:hidden" />
+                <img src={iconOpenCodeDark} alt="" className="hidden size-4 dark:block" />
+                OpenCode Go
+              </TabsTrigger>
+              <TabsTrigger value="vertex">
+                <img src={iconVertex} alt="" className="size-4" />
+                Vertex
+              </TabsTrigger>
+              <TabsTrigger value="bedrock">
+                <Cloud size={16} />
+                Bedrock
+              </TabsTrigger>
+              <TabsTrigger value="openai">
+                <img src={iconOpenai} alt="" className="size-4 dark:hidden" />
+                <img src={iconOpenai} alt="" className="hidden size-4 dark:block" />
+                {t("providers.openai_compatible")}
+              </TabsTrigger>
+              <TabsTrigger value="ampcode">
+                <img src={iconAmp} alt="" className="size-4" />
+                Ampcode
+              </TabsTrigger>
+            </TabsList>
+          </div>
+          <TabsContent value="gemini" className="flex min-h-0 flex-1 flex-col">
           <ProviderKeyListCard
             icon={Globe}
             title={t("providers.gemini_keys")}
@@ -487,10 +801,12 @@ export function ProvidersPage() {
             getAccessSummary={getProviderAccessSummary}
             getLatencyEntry={getLatencyEntry}
             checkLatency={checkLatency}
+            selectedKeys={selectedExportKeySet}
+            onToggleSelected={toggleExportSelection}
           />
         </TabsContent>
 
-        <TabsContent value="claude" className="mt-6">
+          <TabsContent value="claude" className="flex min-h-0 flex-1 flex-col">
           <ProviderKeyListCard
             icon={Bot}
             title={t("providers.claude_keys")}
@@ -505,10 +821,12 @@ export function ProvidersPage() {
             getAccessSummary={getProviderAccessSummary}
             getLatencyEntry={getLatencyEntry}
             checkLatency={checkLatency}
+            selectedKeys={selectedExportKeySet}
+            onToggleSelected={toggleExportSelection}
           />
         </TabsContent>
 
-        <TabsContent value="codex" className="mt-6">
+          <TabsContent value="codex" className="flex min-h-0 flex-1 flex-col">
           <ProviderKeyListCard
             icon={FileKey}
             title={t("providers.codex_keys")}
@@ -523,10 +841,12 @@ export function ProvidersPage() {
             getAccessSummary={getProviderAccessSummary}
             getLatencyEntry={getLatencyEntry}
             checkLatency={checkLatency}
+            selectedKeys={selectedExportKeySet}
+            onToggleSelected={toggleExportSelection}
           />
         </TabsContent>
 
-        <TabsContent value="opencode-go" className="mt-6">
+          <TabsContent value="opencode-go" className="flex min-h-0 flex-1 flex-col">
           <ProviderKeyListCard
             icon={FileKey}
             iconSrc={iconOpenCodeLight}
@@ -544,10 +864,12 @@ export function ProvidersPage() {
             getStatusBar={getSimpleStatusBar}
             getAccessSummary={getProviderAccessSummary}
             showBaseUrl={false}
+            selectedKeys={selectedExportKeySet}
+            onToggleSelected={toggleExportSelection}
           />
         </TabsContent>
 
-        <TabsContent value="vertex" className="mt-6">
+          <TabsContent value="vertex" className="flex min-h-0 flex-1 flex-col">
           <ProviderKeyListCard
             icon={Database}
             title={t("providers.vertex_keys")}
@@ -561,10 +883,12 @@ export function ProvidersPage() {
             getAccessSummary={getProviderAccessSummary}
             getLatencyEntry={getLatencyEntry}
             checkLatency={checkLatency}
+            selectedKeys={selectedExportKeySet}
+            onToggleSelected={toggleExportSelection}
           />
         </TabsContent>
 
-        <TabsContent value="bedrock" className="mt-6">
+          <TabsContent value="bedrock" className="flex min-h-0 flex-1 flex-col">
           <ProviderKeyListCard
             icon={Cloud}
             title={t("providers.bedrock_keys")}
@@ -579,10 +903,12 @@ export function ProvidersPage() {
             getAccessSummary={getProviderAccessSummary}
             getLatencyEntry={getLatencyEntry}
             checkLatency={checkLatency}
+            selectedKeys={selectedExportKeySet}
+            onToggleSelected={toggleExportSelection}
           />
         </TabsContent>
 
-        <TabsContent value="openai" className="mt-6">
+          <TabsContent value="openai" className="flex min-h-0 flex-1 flex-col">
           <OpenAIProvidersTab
             providers={openaiProviders}
             openOpenAIEditor={openOpenAIEditor}
@@ -591,10 +917,15 @@ export function ProvidersPage() {
             getKeyEntryStats={getOpenAIKeyEntryStats}
             getProviderStats={getOpenAIProviderStats}
             getProviderStatusBar={getOpenAIProviderStatusBar}
+            onToggleKeyEntryEnabled={(providerIndex, entryIndex, enabled) =>
+              void toggleOpenAIKeyEntryEnabled(providerIndex, entryIndex, enabled)
+            }
+            selectedKeys={selectedExportKeySet}
+            onToggleSelected={toggleExportSelection}
           />
         </TabsContent>
 
-        <TabsContent value="ampcode" className="mt-6">
+          <TabsContent value="ampcode" className="flex min-h-0 flex-1 flex-col">
           <AmpcodePanel
             loading={loading}
             isPending={isPending}
@@ -610,6 +941,7 @@ export function ProvidersPage() {
             setAmpMappings={setAmpMappings}
           />
         </TabsContent>
+        </div>
       </Tabs>
 
       <ProviderKeyModal
@@ -676,6 +1008,112 @@ export function ProvidersPage() {
           void deleteKey(action.keyType, action.index);
         }}
       />
+
+      <Modal
+        open={importPreview !== null}
+        title={t("providers.import_preview_title")}
+        description={
+          importPreview
+            ? t("providers.import_preview_desc", { filename: importPreview.filename })
+            : undefined
+        }
+        maxWidth="max-w-2xl"
+        onClose={() => {
+          if (importing) return;
+          setImportPreview(null);
+        }}
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => setImportPreview(null)}
+              disabled={importing}
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => void confirmImport()}
+              disabled={!importPreview?.diff.hasChanges || importing}
+            >
+              {t("providers.confirm_import")}
+            </Button>
+          </>
+        }
+      >
+        {importPreview ? (
+          <div className="space-y-4 text-sm text-slate-700 dark:text-white/75">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900">
+                <div>{t("providers.diff_added", { count: importPreview.diff.added })}</div>
+                <div>{t("providers.diff_updated", { count: importPreview.diff.changed })}</div>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900">
+                <div>{t("providers.diff_removed", { count: importPreview.diff.removed })}</div>
+                <div>
+                  {t("providers.diff_duplicates_cleaned", {
+                    count: importPreview.diff.duplicateEntriesRemoved,
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {!importPreview.diff.hasChanges ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+                {t("providers.import_no_changes")}
+              </div>
+            ) : null}
+
+            {importPreview.diff.addedLabels.length ? (
+              <div>
+                <p className="font-semibold">{t("providers.diff_added_label")}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {importPreview.diff.addedLabels.map((label) => (
+                    <span
+                      key={`added-${label}`}
+                      className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100"
+                    >
+                      {label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {importPreview.diff.changedLabels.length ? (
+              <div>
+                <p className="font-semibold">{t("providers.diff_updated_label")}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {importPreview.diff.changedLabels.map((label) => (
+                    <span
+                      key={`changed-${label}`}
+                      className="rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-xs text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100"
+                    >
+                      {label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {importPreview.diff.removedLabels.length ? (
+              <div>
+                <p className="font-semibold">{t("providers.diff_removed_label")}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {importPreview.diff.removedLabels.map((label) => (
+                    <span
+                      key={`removed-${label}`}
+                      className="rounded-full border border-rose-200 bg-rose-50 px-2 py-1 text-xs text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100"
+                    >
+                      {label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }

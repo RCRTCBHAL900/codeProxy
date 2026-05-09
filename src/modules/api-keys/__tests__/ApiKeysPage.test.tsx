@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, test, vi } from "vitest";
@@ -10,6 +10,7 @@ import { ToastProvider } from "@/modules/ui/ToastProvider";
 const state = vi.hoisted(() => ({
   entries: [] as any[],
   channelGroups: [] as any[],
+  ccSwitchImportConfigs: [] as any[],
   configYaml: "",
   permissionProfiles: [] as any[],
 }));
@@ -38,6 +39,9 @@ const mocks = vi.hoisted(() => ({
     if (url === "/api-key-permission-profiles") {
       state.permissionProfiles = body;
     }
+    if (url === "/ccswitch-import-configs") {
+      state.ccSwitchImportConfigs = body;
+    }
     return {};
   }),
   authFilesList: vi.fn(async () => ({ files: [] })),
@@ -49,6 +53,9 @@ const mocks = vi.hoisted(() => ({
   apiClientGet: vi.fn(async (url: string) => {
     if (url === "/api-key-permission-profiles") {
       return { "api-key-permission-profiles": state.permissionProfiles };
+    }
+    if (url === "/ccswitch-import-configs") {
+      return { "ccswitch-import-configs": state.ccSwitchImportConfigs };
     }
     if (url === "/channel-groups") {
       return { items: state.channelGroups };
@@ -177,6 +184,7 @@ vi.mock("@/modules/ui/VirtualTable", () => ({
 describe("ApiKeysPage", () => {
   beforeEach(async () => {
     await i18n.changeLanguage("en");
+    window.localStorage.clear();
     state.entries = [
       {
         key: "sk-existing-1234567890",
@@ -185,6 +193,7 @@ describe("ApiKeysPage", () => {
       },
     ];
     state.channelGroups = [];
+    state.ccSwitchImportConfigs = [];
     state.configYaml = "";
     state.permissionProfiles = [];
     mocks.apiKeyEntriesList.mockClear();
@@ -428,10 +437,7 @@ describe("ApiKeysPage", () => {
     }
   });
 
-  test("opens CC Switch import modal and launches selected client deeplink", async () => {
-    const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
-    vi.spyOn(document, "hasFocus").mockReturnValue(false);
-
+  test("opens CC Switch import card list and shows empty compatible state", async () => {
     render(
       <MemoryRouter>
         <ThemeProvider>
@@ -447,28 +453,11 @@ describe("ApiKeysPage", () => {
     await userEvent.click(screen.getByRole("button", { name: /import to cc switch/i }));
 
     const dialog = await screen.findByRole("dialog", { name: /import to cc switch/i });
-    expect(dialog).toHaveTextContent(/claude code/i);
-
-    await userEvent.click(screen.getByRole("tab", { name: /codex/i }));
-
-    await userEvent.click(screen.getByRole("button", { name: /import codex/i }));
-
-    await waitFor(() => {
-      expect(openSpy).toHaveBeenCalledWith(
-        expect.stringContaining("ccswitch://v1/import?"),
-        "_self",
-      );
-    });
-
-    const openedUrl = String(openSpy.mock.calls.at(-1)?.[0] ?? "");
-    const parsed = new URL(openedUrl);
-    expect(parsed.searchParams.get("app")).toBe("codex");
-    expect(parsed.searchParams.get("apiKey")).toBe("sk-existing-1234567890");
-
-    openSpy.mockRestore();
+    expect(dialog).toHaveTextContent(/select a cc switch preset to import/i);
+    expect(dialog).toHaveTextContent(/no compatible cc switch configs found/i);
   });
 
-  test("imports a Codex CC Switch provider from the selected client-specific form", async () => {
+  test("imports a compatible Codex CC Switch preset from the card list", async () => {
     const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
     vi.spyOn(document, "hasFocus").mockReturnValue(false);
     state.entries = [
@@ -491,6 +480,18 @@ describe("ApiKeysPage", () => {
         "path-routes": ["/team-a"],
       },
     ];
+    state.ccSwitchImportConfigs = [
+      {
+        id: "preset-codex",
+        "client-type": "codex",
+        "provider-name": "Preset Codex",
+        note: "Primary route",
+        "default-model": "gpt-5.4",
+        "allowed-channel-groups": ["pro", "team-a"],
+        "endpoint-path": "/openai/v2",
+        "usage-auto-interval": 45,
+      },
+    ];
 
     render(
       <MemoryRouter>
@@ -506,22 +507,7 @@ describe("ApiKeysPage", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /import to cc switch/i }));
     await screen.findByRole("dialog", { name: /import to cc switch/i });
-
-    await userEvent.click(screen.getByRole("tab", { name: /codex/i }));
-
-    expect(screen.queryByRole("combobox", { name: /claude code auth field/i })).toBeNull();
-
-    const providerNameInput = screen.getByRole("textbox", { name: /provider name/i });
-    await userEvent.clear(providerNameInput);
-    await userEvent.type(providerNameInput, "Work");
-
-    await userEvent.click(screen.getByRole("checkbox", { name: /enabled by default/i }));
-
-    const modelSelect = await screen.findByRole("combobox", { name: /model/i });
-    await userEvent.click(modelSelect);
-    await userEvent.click(await screen.findByRole("option", { name: "gpt-5.4" }));
-
-    await userEvent.click(screen.getByRole("button", { name: /import codex/i }));
+    await userEvent.click(screen.getByRole("button", { name: /preset codex/i }));
 
     await waitFor(() => {
       expect(openSpy).toHaveBeenCalledWith(
@@ -533,82 +519,22 @@ describe("ApiKeysPage", () => {
     const openedUrl = String(openSpy.mock.calls.at(-1)?.[0] ?? "");
     const parsed = new URL(openedUrl);
     expect(parsed.searchParams.get("app")).toBe("codex");
-    expect(parsed.searchParams.get("name")).toBe("Work");
-    expect(parsed.searchParams.get("endpoint")).toBe("http://localhost:3000/pro/v1");
+    expect(parsed.searchParams.get("apiKey")).toBe("sk-group-1234567890");
+    expect(parsed.searchParams.get("name")).toBe("Preset Codex");
+    expect(parsed.searchParams.get("endpoint")).toBe("http://localhost:3000/pro/openai/v2");
     expect(parsed.searchParams.get("model")).toBe("gpt-5.4");
-    expect(parsed.searchParams.get("enabled")).toBe("false");
-    expect(parsed.searchParams.has("apiKeyField")).toBe(false);
+    expect(parsed.searchParams.get("usageAutoInterval")).toBe("45");
 
     openSpy.mockRestore();
   });
 
-  test("keeps the CC Switch client-specific panel stable while switching client types", async () => {
-    state.entries = [
-      {
-        key: "sk-group-1234567890",
-        name: "Group Key",
-        "allowed-channel-groups": ["pro"],
-        "created-at": "2026-04-14T00:00:00.000Z",
-      },
-    ];
-    state.channelGroups = [
-      {
-        name: "pro",
-        description: "Pro route",
-        "path-routes": ["/pro"],
-      },
-    ];
-
-    render(
-      <MemoryRouter>
-        <ThemeProvider>
-          <ToastProvider>
-            <ApiKeysPage />
-          </ToastProvider>
-        </ThemeProvider>
-      </MemoryRouter>,
-    );
-
-    expect(await screen.findByText("Group Key")).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("button", { name: /import to cc switch/i }));
-    await screen.findByRole("dialog", { name: /import to cc switch/i });
-
-    const tabs = screen.getByRole("tablist", { name: /client type/i });
-    expect(tabs).toHaveClass("sticky");
-    expect(tabs).toHaveClass("top-0");
-    expect(tabs).toHaveClass("rounded-full");
-    expect(tabs).toHaveClass("bg-[#EBEBEC]");
-    expect(tabs).toHaveClass("h-9");
-    expect(tabs).not.toHaveClass("grid");
-    expect(screen.queryByRole("combobox", { name: /client type/i })).toBeNull();
-    expect(screen.getByTestId("ccswitch-client-tab-icon-claude")).toBeInTheDocument();
-    expect(screen.getByTestId("ccswitch-client-tab-icon-codex")).toBeInTheDocument();
-    expect(screen.getByTestId("ccswitch-client-tab-icon-gemini")).toBeInTheDocument();
-
-    const detailsPanel = screen.getByTestId("ccswitch-client-specific-panel");
-    expect(detailsPanel).toHaveClass("min-h-[76px]");
-    expect(within(detailsPanel).getByText(/base url/i)).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: /claude code auth field/i })).toBeInTheDocument();
-
-    const providerRow = screen.getByTestId("ccswitch-import-provider-row");
-    expect(providerRow).toHaveClass("sm:grid-cols-[minmax(0,1fr)_minmax(220px,0.78fr)]");
-
-    await userEvent.click(screen.getByRole("tab", { name: /codex/i }));
-
-    expect(screen.getByTestId("ccswitch-client-specific-panel")).toBe(detailsPanel);
-    expect(screen.queryByRole("combobox", { name: /claude code auth field/i })).toBeNull();
-    expect(detailsPanel).toHaveTextContent(/openai-compatible/i);
-    expect(detailsPanel).toHaveTextContent(/\/v1/i);
-  });
-
-  test("imports a Claude Code CC Switch provider with its auth field in the selected form", async () => {
+  test("imports a saved Claude Code preset with auth field and model mappings", async () => {
     const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
     vi.spyOn(document, "hasFocus").mockReturnValue(false);
     state.entries = [
       {
-        key: "sk-group-1234567890",
-        name: "Claude Key",
+        key: "sk-claude-preset-1234567890",
+        name: "Claude Preset Key",
         "allowed-channel-groups": ["team-a"],
         "created-at": "2026-04-14T00:00:00.000Z",
       },
@@ -620,6 +546,25 @@ describe("ApiKeysPage", () => {
         "path-routes": ["/team-a"],
       },
     ];
+    state.ccSwitchImportConfigs = [
+      {
+        id: "preset-claude",
+        "client-type": "claude",
+        "provider-name": "Preset Claude",
+        note: "Role defaults",
+        "default-model": "claude-sonnet-4-5",
+        "allowed-channel-groups": ["team-a"],
+        "endpoint-path": "",
+        "usage-auto-interval": 60,
+        "api-key-field": "ANTHROPIC_AUTH_TOKEN",
+        "model-mappings": [
+          { role: "main", "request-model": "main", "target-model": "claude-sonnet-4-5" },
+          { role: "haiku", "request-model": "haiku", "target-model": "claude-haiku-4-5" },
+          { role: "sonnet", "request-model": "sonnet", "target-model": "claude-sonnet-4-5" },
+          { role: "opus", "request-model": "opus", "target-model": "claude-opus-4-1" },
+        ],
+      },
+    ];
 
     render(
       <MemoryRouter>
@@ -631,22 +576,12 @@ describe("ApiKeysPage", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("Claude Key")).toBeInTheDocument();
+    expect(await screen.findByText("Claude Preset Key")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: /import to cc switch/i }));
     await screen.findByRole("dialog", { name: /import to cc switch/i });
 
-    await userEvent.click(screen.getByRole("tab", { name: /claude code/i }));
-
-    expect(screen.getByRole("combobox", { name: /claude code auth field/i })).toHaveTextContent(
-      "ANTHROPIC_API_KEY",
-    );
-
-    const providerNameInput = screen.getByRole("textbox", { name: /provider name/i });
-    await userEvent.clear(providerNameInput);
-    await userEvent.type(providerNameInput, "Anthropic Work");
-
-    await userEvent.click(screen.getByRole("button", { name: /import claude code/i }));
+    await userEvent.click(screen.getByRole("button", { name: /preset claude/i }));
 
     await waitFor(() => {
       expect(openSpy).toHaveBeenCalledWith(
@@ -658,10 +593,94 @@ describe("ApiKeysPage", () => {
     const openedUrl = String(openSpy.mock.calls.at(-1)?.[0] ?? "");
     const parsed = new URL(openedUrl);
     expect(parsed.searchParams.get("app")).toBe("claude");
-    expect(parsed.searchParams.get("name")).toBe("Anthropic Work");
-    expect(parsed.searchParams.get("endpoint")).toBe("http://localhost:3000/team-a");
+    expect(parsed.searchParams.get("name")).toBe("Preset Claude");
     expect(parsed.searchParams.get("model")).toBe("claude-sonnet-4-5");
-    expect(parsed.searchParams.get("apiKeyField")).toBe("ANTHROPIC_API_KEY");
+    expect(parsed.searchParams.get("haikuModel")).toBe("claude-haiku-4-5");
+    expect(parsed.searchParams.get("sonnetModel")).toBe("claude-sonnet-4-5");
+    expect(parsed.searchParams.get("opusModel")).toBe("claude-opus-4-1");
+    expect(parsed.searchParams.get("apiKeyField")).toBe("ANTHROPIC_AUTH_TOKEN");
+
+    openSpy.mockRestore();
+  });
+
+  test("filters CC Switch presets by the API key allowed channel groups", async () => {
+    const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
+    vi.spyOn(document, "hasFocus").mockReturnValue(false);
+    state.entries = [
+      {
+        key: "sk-preset-1234567890",
+        name: "Preset Key",
+        "allowed-channel-groups": ["team-a", "pro"],
+        "created-at": "2026-04-14T00:00:00.000Z",
+      },
+    ];
+    state.channelGroups = [
+      {
+        name: "team-a",
+        description: "Team A route",
+        "path-routes": ["/team-a"],
+      },
+      {
+        name: "pro",
+        description: "Pro route",
+        "path-routes": ["/pro"],
+      },
+    ];
+    state.ccSwitchImportConfigs = [
+      {
+        id: "preset-team",
+        "client-type": "codex",
+        "provider-name": "Team Codex",
+        note: "Team route",
+        "default-model": "gpt-5.4",
+        "allowed-channel-groups": ["team-a"],
+        "endpoint-path": "/v1",
+        "usage-auto-interval": 30,
+      },
+      {
+        id: "preset-enterprise",
+        "client-type": "codex",
+        "provider-name": "Enterprise Codex",
+        note: "Blocked route",
+        "default-model": "gpt-5.5",
+        "allowed-channel-groups": ["enterprise"],
+        "endpoint-path": "/v1",
+        "usage-auto-interval": 30,
+      },
+    ];
+
+    render(
+      <MemoryRouter>
+        <ThemeProvider>
+          <ToastProvider>
+            <ApiKeysPage />
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Preset Key")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /import to cc switch/i }));
+    await screen.findByRole("dialog", { name: /import to cc switch/i });
+
+    expect(screen.getByRole("button", { name: /team codex/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /enterprise codex/i })).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: /team codex/i }));
+
+    await waitFor(() => {
+      expect(openSpy).toHaveBeenCalledWith(
+        expect.stringContaining("ccswitch://v1/import?"),
+        "_self",
+      );
+    });
+
+    const openedUrl = String(openSpy.mock.calls.at(-1)?.[0] ?? "");
+    const parsed = new URL(openedUrl);
+    expect(parsed.searchParams.get("name")).toBe("Team Codex");
+    expect(parsed.searchParams.get("endpoint")).toBe("http://localhost:3000/team-a/v1");
+    expect(parsed.searchParams.get("model")).toBe("gpt-5.4");
 
     openSpy.mockRestore();
   });

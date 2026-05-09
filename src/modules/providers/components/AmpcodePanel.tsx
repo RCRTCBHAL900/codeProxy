@@ -41,6 +41,8 @@ export function AmpcodePanel({
     <Card
       title={t("providers.ampcode_title")}
       description={t("providers.ampcode_desc")}
+      className="flex h-full min-h-0 flex-col"
+      bodyClassName="min-h-0 flex flex-1 flex-col overflow-y-auto pr-1"
       actions={
         <Button
           variant="primary"

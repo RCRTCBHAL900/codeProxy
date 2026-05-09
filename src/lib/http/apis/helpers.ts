@@ -227,6 +227,7 @@ export const serializeOpenAIProvider = (provider: OpenAIProvider) => {
         const apiKey = normalizeString(entry.apiKey) ?? "";
         if (!apiKey) return null;
         const entryPayload: Record<string, unknown> = { "api-key": apiKey };
+        if (entry.disabled === true) entryPayload.disabled = true;
         const proxyUrl = normalizeString(entry.proxyUrl);
         if (proxyUrl) entryPayload["proxy-url"] = proxyUrl;
         const proxyId = normalizeString(entry.proxyId);
@@ -312,11 +313,13 @@ export const normalizeApiKeyEntries = (raw: unknown): ProviderApiKeyEntry[] | un
       if (!isRecord(entry)) return null;
       const apiKey = normalizeString(entry["api-key"] ?? entry.apiKey) ?? "";
       if (!apiKey) return null;
+      const disabled = entry.disabled === true;
       const proxyUrl = normalizeString(entry["proxy-url"] ?? entry.proxyUrl) ?? undefined;
       const proxyId = normalizeString(entry["proxy-id"] ?? entry.proxyId) ?? undefined;
       const entryHeaders = normalizeHeaders(entry.headers);
       return {
         apiKey,
+        ...(disabled ? { disabled } : {}),
         ...(proxyUrl ? { proxyUrl } : {}),
         ...(proxyId ? { proxyId } : {}),
         ...(entryHeaders ? { headers: entryHeaders } : {}),

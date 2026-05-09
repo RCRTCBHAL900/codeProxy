@@ -193,6 +193,7 @@ export type OpenAIDraft = {
   testModel: string;
   apiKeyEntries: {
     apiKey: string;
+    disabled: boolean;
     proxyUrl: string;
     proxyId: string;
     headersEntries: KeyValueEntry[];
@@ -213,11 +214,21 @@ export const buildOpenAIDraft = (input?: OpenAIProvider | null): OpenAIDraft => 
       ? input.apiKeyEntries.map((entry, idx) => ({
           id: `key-${idx}-${entry.apiKey}`,
           apiKey: entry.apiKey ?? "",
+          disabled: entry.disabled === true,
           proxyUrl: entry.proxyUrl ?? "",
           proxyId: entry.proxyId ?? "",
           headersEntries: recordToKeyValueEntries(entry.headers),
         }))
-      : [{ id: `key-${Date.now()}`, apiKey: "", proxyUrl: "", proxyId: "", headersEntries: [] }],
+      : [
+          {
+            id: `key-${Date.now()}`,
+            apiKey: "",
+            disabled: false,
+            proxyUrl: "",
+            proxyId: "",
+            headersEntries: [],
+          },
+        ],
   modelEntries: buildModelEntries(input?.models),
 });
 

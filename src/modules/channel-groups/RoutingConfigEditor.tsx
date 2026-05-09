@@ -1161,9 +1161,12 @@ export function RoutingConfigEditor({
 
               <div
                 data-testid="group-editor-tab-viewport"
-                className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1"
+                className="mt-4 min-h-0 flex-1 overflow-hidden"
               >
-                <TabsContent value="basic" className="space-y-5">
+                <TabsContent
+                  value="basic"
+                  className="h-full min-h-0 overflow-y-auto pr-1 space-y-5"
+                >
                   <Field
                     label={t("channel_groups_page.routing_strategy_label")}
                     tooltip={t("channel_groups_page.routing_strategy_tooltip")}
@@ -1262,7 +1265,8 @@ export function RoutingConfigEditor({
                     rowKey={(channel) => channel.id}
                     virtualize={false}
                     rowHeight={52}
-                    height="h-[248px]"
+                    height="h-auto"
+                    minHeight="min-h-0"
                     minWidth="min-w-[640px]"
                     caption={t("channel_groups_page.select_channel_label")}
                     emptyText={t("channel_groups_page.empty_group_channels")}
@@ -1271,10 +1275,11 @@ export function RoutingConfigEditor({
                         ? "bg-rose-50/70 dark:bg-rose-500/10"
                         : ""
                     }
+                    naturalFlow
                   />
                 </TabsContent>
 
-                <TabsContent value="models" className="flex h-full min-h-0 flex-col gap-3">
+                <TabsContent value="models" className="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="space-y-1">
                       <div className="text-sm font-semibold text-slate-900 dark:text-white">

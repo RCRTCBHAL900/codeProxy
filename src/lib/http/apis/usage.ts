@@ -16,6 +16,20 @@ export interface UsageImportResponse {
   [key: string]: unknown;
 }
 
+export interface ClearUsageLogsResponse {
+  deleted_logs: number;
+  deleted_contents: number;
+  cleared_body_rows?: number;
+  cleared_detail_rows?: number;
+  cleared_legacy_rows?: number;
+}
+
+export interface ClearUsageLogsPayload {
+  clear_body_content: boolean;
+  clear_detail_content: boolean;
+  clear_request_records: boolean;
+}
+
 export interface AuthFileGroupTrendPoint {
   date: string;
   requests: number;
@@ -233,6 +247,10 @@ export const usageApi = {
         total_cost: resp?.stats?.total_cost ?? 0,
       },
     };
+  },
+
+  clearUsageLogs(payload: ClearUsageLogsPayload): Promise<ClearUsageLogsResponse> {
+    return apiClient.delete<ClearUsageLogsResponse>("/usage/logs", payload);
   },
 
   exportUsage(): Promise<UsageExportPayload> {

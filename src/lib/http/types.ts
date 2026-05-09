@@ -172,6 +172,7 @@ export interface ProviderModel {
 
 export interface ProviderApiKeyEntry {
   apiKey: string;
+  disabled?: boolean;
   proxyUrl?: string;
   proxyId?: string;
   headers?: Record<string, string>;

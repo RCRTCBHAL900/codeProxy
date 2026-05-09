@@ -75,6 +75,10 @@ export interface VirtualTableProps<T> {
   showAllLoadedMessage?: boolean;
   /** Extra row className */
   rowClassName?: string | ((row: T, index: number) => string);
+  /** Let parent scroll containers handle wheel events when this table is already at an edge. */
+  allowWheelPropagationAtBoundary?: boolean;
+  /** Render the table in normal document flow without any internal table scrollbars. */
+  naturalFlow?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -120,6 +124,8 @@ export function VirtualTable<T>({
   emptyText = "",
   showAllLoadedMessage = true,
   rowClassName,
+  allowWheelPropagationAtBoundary = false,
+  naturalFlow = false,
 }: VirtualTableProps<T>) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -278,10 +284,11 @@ export function VirtualTable<T>({
     }
 
     if (wantsY || wantsX) {
+      if (allowWheelPropagationAtBoundary) return;
       e.preventDefault();
       e.stopPropagation();
     }
-  }, []);
+  }, [allowWheelPropagationAtBoundary]);
 
   const dragRef = useRef<null | {
     axis: "x" | "y";
@@ -543,33 +550,46 @@ export function VirtualTable<T>({
   return (
     <div
       aria-busy={loading || loadingMore ? true : undefined}
-      className={`${height} ${minHeight} group relative isolate grid min-w-0 grid-cols-[minmax(0,1fr)_0.75rem] overflow-hidden`}
+      data-vt-natural-flow={naturalFlow ? true : undefined}
+      className={
+        naturalFlow
+          ? `${height} ${minHeight} relative min-w-0 overflow-visible`
+          : `${height} ${minHeight} group relative isolate grid min-w-0 ${vThumb ? "grid-cols-[minmax(0,1fr)_0.75rem]" : "grid-cols-1"} overflow-hidden`
+      }
     >
-      <div
-        data-vt-header-backdrop
-        className="pointer-events-none absolute inset-x-0 top-0 z-0 rounded-xl bg-slate-100 dark:bg-neutral-800"
-        style={{ height: headerHeight }}
-      />
+      {naturalFlow ? null : (
+        <div
+          data-vt-header-backdrop
+          className="pointer-events-none absolute inset-x-0 top-0 z-0 rounded-xl bg-slate-100 dark:bg-neutral-800"
+          style={{ height: headerHeight }}
+        />
+      )}
       <div
         ref={containerRef}
-        onScroll={onScroll}
-        onWheelCapture={onWheelCapture}
-        tabIndex={0}
-        data-scrollbar-visibility="hover"
-        className="relative z-10 col-start-1 row-start-1 h-full min-h-0 table-scrollbar overflow-auto overscroll-x-none overscroll-y-none rounded-tl-xl"
+        onScroll={naturalFlow ? undefined : onScroll}
+        onWheelCapture={naturalFlow ? undefined : onWheelCapture}
+        tabIndex={naturalFlow ? undefined : 0}
+        data-scrollbar-visibility={naturalFlow ? undefined : "hover"}
+        className={
+          naturalFlow
+            ? "relative z-10 min-h-0 overflow-visible rounded-xl"
+            : "relative z-10 col-start-1 row-start-1 h-full min-h-0 table-scrollbar overflow-auto overscroll-x-none overscroll-y-none rounded-tl-xl"
+        }
       >
-        <div
-          data-vt-header-overlay
-          className="pointer-events-none sticky left-0 top-0 z-10 w-full rounded-l-xl bg-slate-100 dark:bg-neutral-800"
-          style={{ height: headerHeight, marginBottom: -headerHeight }}
-        />
+        {naturalFlow ? null : (
+          <div
+            data-vt-header-overlay
+            className={`pointer-events-none sticky left-0 top-0 z-10 w-full ${vThumb ? "rounded-l-xl" : "rounded-xl"} bg-slate-100 dark:bg-neutral-800`}
+            style={{ height: headerHeight, marginBottom: -headerHeight }}
+          />
+        )}
         <table
           className={`w-full ${minWidth} table-fixed border-separate border-spacing-0 text-sm`}
         >
           <caption className="sr-only">{caption}</caption>
 
           {/* ── HeroUI-styled header ── */}
-          <thead ref={headerRef} className="sticky top-0 z-20">
+          <thead ref={headerRef} className={naturalFlow ? undefined : "sticky top-0 z-20"}>
             <tr className="text-left text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-white/55">
               {columns.map((col) => {
                 return (
@@ -701,16 +721,16 @@ export function VirtualTable<T>({
         )}
       </div>
 
-      <div
-        data-vt-scrollbar-gutter
-        className="relative z-30 col-start-2 row-start-1 h-full w-3 justify-self-end"
-      >
+      {!naturalFlow && vThumb ? (
         <div
-          data-vt-header-gutter
-          className="absolute inset-x-0 top-0 rounded-r-xl bg-slate-100 dark:bg-neutral-800"
-          style={{ height: headerHeight }}
-        />
-        {vThumb ? (
+          data-vt-scrollbar-gutter
+          className="relative z-30 col-start-2 row-start-1 h-full w-3 justify-self-end"
+        >
+          <div
+            data-vt-header-gutter
+            className="absolute inset-x-0 top-0 rounded-r-xl bg-slate-100 dark:bg-neutral-800"
+            style={{ height: headerHeight }}
+          />
           <div
             data-vt-scrollbar="y"
             className="pointer-events-auto absolute right-0 z-30 w-2 opacity-0 transition-opacity hover:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
@@ -727,10 +747,10 @@ export function VirtualTable<T>({
               onPointerCancel={handleThumbPointerUp}
             />
           </div>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
-      {hThumb ? (
+      {!naturalFlow && hThumb ? (
         <div
           data-vt-scrollbar="x"
           className="pointer-events-auto absolute bottom-1 left-2 right-5 z-30 h-2 opacity-0 transition-opacity hover:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"

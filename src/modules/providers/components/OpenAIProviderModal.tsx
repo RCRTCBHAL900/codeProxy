@@ -7,6 +7,7 @@ import { buildModelsEndpoint } from "@/modules/providers/providers-helpers";
 import { Button } from "@/modules/ui/Button";
 import { TextInput } from "@/modules/ui/Input";
 import { Modal } from "@/modules/ui/Modal";
+import { ToggleSwitch } from "@/modules/ui/ToggleSwitch";
 import { KeyValueInputList } from "@/modules/providers/KeyValueInputList";
 import { ModelInputList } from "@/modules/providers/ModelInputList";
 import type { ProxyPoolEntry } from "@/lib/http/apis/proxies";
@@ -221,6 +222,7 @@ export function OpenAIProviderModal({
                     {
                       id: `key-${Date.now()}`,
                       apiKey: "",
+                      disabled: false,
                       proxyUrl: "",
                       proxyId: "",
                       headersEntries: [],
@@ -241,9 +243,26 @@ export function OpenAIProviderModal({
                 className="rounded-2xl border border-slate-200 bg-white/70 p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-950/60"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                    {t("providers.key_number", { num: idx + 1 })}
-                  </p>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                      {t("providers.key_number", { num: idx + 1 })}
+                    </p>
+                    <ToggleSwitch
+                      checked={!entry.disabled}
+                      ariaLabel={`${t("providers.enable_key_entry")} ${idx + 1}`}
+                      onCheckedChange={(enabled) => {
+                        setOpenaiDraft((prev) => ({
+                          ...prev,
+                          apiKeyEntries: prev.apiKeyEntries.map((it, i) =>
+                            i === idx ? { ...it, disabled: !enabled } : it,
+                          ),
+                        }));
+                      }}
+                    />
+                    <span className="text-xs font-semibold text-slate-500 dark:text-white/55">
+                      {!entry.disabled ? t("providers.enabled") : t("providers.disabled")}
+                    </span>
+                  </div>
                   <Button
                     variant="danger"
                     size="sm"

@@ -47,6 +47,44 @@ describe("ccswitchImport", () => {
     expect(new URL(url).searchParams.get("apiKeyField")).toBe("ANTHROPIC_AUTH_TOKEN");
   });
 
+  test("builds a Claude provider deeplink with main and family model mappings", () => {
+    const url = buildCcSwitchImportUrl({
+      apiKey: "sk-ant-test-key",
+      baseUrl: "https://relay.example.com/pro",
+      clientType: "claude",
+      providerName: "Mapped Claude",
+      modelMappings: [
+        { role: "main", requestModel: "claude-main-router", targetModel: "claude-sonnet-4-5" },
+        { role: "haiku", requestModel: "claude-haiku-router", targetModel: "claude-haiku-4-5" },
+        { role: "sonnet", requestModel: "claude-sonnet-router", targetModel: "claude-sonnet-4-5" },
+        { role: "opus", requestModel: "claude-opus-router", targetModel: "claude-opus-4-1" },
+      ],
+    });
+
+    const parsed = new URL(url);
+    expect(parsed.searchParams.get("model")).toBe("claude-main-router");
+    expect(parsed.searchParams.get("haikuModel")).toBe("claude-haiku-router");
+    expect(parsed.searchParams.get("sonnetModel")).toBe("claude-sonnet-router");
+    expect(parsed.searchParams.get("opusModel")).toBe("claude-opus-router");
+  });
+
+  test("keeps legacy Claude role placeholders compatible when building deeplinks", () => {
+    const url = buildCcSwitchImportUrl({
+      apiKey: "sk-ant-test-key",
+      baseUrl: "https://relay.example.com/pro",
+      clientType: "claude",
+      providerName: "Legacy Claude",
+      modelMappings: [
+        { role: "main", requestModel: "main", targetModel: "claude-sonnet-4-5" },
+        { role: "haiku", requestModel: "haiku", targetModel: "claude-haiku-4-5" },
+      ],
+    });
+
+    const parsed = new URL(url);
+    expect(parsed.searchParams.get("model")).toBe("claude-sonnet-4-5");
+    expect(parsed.searchParams.get("haikuModel")).toBe("claude-haiku-4-5");
+  });
+
   test("builds a Codex provider deeplink with endpoint, model, and usage script", () => {
     const url = buildCcSwitchImportUrl({
       apiKey: "sk-test-key",
@@ -96,6 +134,25 @@ describe("ccswitchImport", () => {
     expect(parsed.searchParams.get("name")).toBe("Team A Codex");
     expect(parsed.searchParams.get("model")).toBe("gpt-5.4");
     expect(parsed.searchParams.get("enabled")).toBe("false");
+  });
+
+  test("uses the request model name from generic model mappings as the provider default", () => {
+    const url = buildCcSwitchImportUrl({
+      apiKey: "sk-test-key",
+      baseUrl: "https://relay.example.com/pro",
+      clientType: "codex",
+      providerName: "Mapped Codex",
+      modelMappings: [
+        { requestModel: "gpt-6-router", targetModel: "deepseek-v4-flash" },
+        { requestModel: "kimi-k2", targetModel: "kimi-k2" },
+      ],
+      settings: {
+        codex: { defaultModel: "" },
+      },
+    });
+
+    const parsed = new URL(url);
+    expect(parsed.searchParams.get("model")).toBe("gpt-6-router");
   });
 
   test("selects a client-specific default model from available models", () => {

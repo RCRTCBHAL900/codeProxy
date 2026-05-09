@@ -36,11 +36,16 @@ export interface CcSwitchImportSelection {
   providerName: string;
 }
 
+export interface CcSwitchImportConfigOption {
+  value: string;
+  label: string;
+}
+
 const labelClassName =
   "text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-white/45";
 const controlClassName =
   "h-10 rounded-xl border border-slate-200/80 bg-white px-3 text-sm text-slate-900 shadow-none hover:border-slate-300 hover:bg-white focus-visible:ring-2 focus-visible:ring-slate-900/10 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white dark:hover:border-neutral-700 dark:focus-visible:ring-white/15";
-const fieldClassName = "space-y-1.5";
+const fieldClassName = "flex flex-col gap-1.5";
 
 const iconByType: Record<CcSwitchClientType, string> = {
   claude: iconClaude,
@@ -54,6 +59,7 @@ export function CcSwitchImportModal({
   baseUrl,
   channelGroup,
   channelGroupOptions = [],
+  configOptions = [],
   clientType,
   claudeApiKeyField,
   enabled,
@@ -61,7 +67,9 @@ export function CcSwitchImportModal({
   models = [],
   modelsLoading = false,
   providerName,
+  selectedConfigId,
   onChannelGroupChange,
+  onConfigChange,
   onClientTypeChange,
   onClose,
   onClaudeApiKeyFieldChange,
@@ -75,6 +83,7 @@ export function CcSwitchImportModal({
   baseUrl: string;
   channelGroup: string;
   channelGroupOptions?: readonly CcSwitchImportGroupOption[];
+  configOptions?: readonly CcSwitchImportConfigOption[];
   clientType: CcSwitchClientType;
   claudeApiKeyField: CcSwitchClaudeAuthField;
   enabled: boolean;
@@ -82,7 +91,9 @@ export function CcSwitchImportModal({
   models?: readonly string[];
   modelsLoading?: boolean;
   providerName: string;
+  selectedConfigId: string;
   onChannelGroupChange: (value: string) => void;
+  onConfigChange: (value: string) => void;
   onClientTypeChange: (value: CcSwitchClientType) => void;
   onClose: () => void;
   onClaudeApiKeyFieldChange: (value: CcSwitchClaudeAuthField) => void;
@@ -106,7 +117,13 @@ export function CcSwitchImportModal({
             label: t("ccswitch.import_channel_group_none"),
           },
         ];
-  const modelOptions = models.map((item) => ({ value: item, label: item }));
+  const modelOptions = Array.from(
+    new Set(
+      [model, ...models]
+        .map((item) => String(item ?? "").trim())
+        .filter(Boolean),
+    ),
+  ).map((item) => ({ value: item, label: item }));
   const claudeApiKeyFieldOptions = CC_SWITCH_CLAUDE_AUTH_FIELDS.map((value) => ({
     value,
     label: t(
@@ -241,6 +258,18 @@ export function CcSwitchImportModal({
           data-testid="ccswitch-import-provider-row"
           className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(220px,0.78fr)]"
         >
+          {configOptions.length > 0 ? (
+            <label className={`${fieldClassName} sm:col-span-2`}>
+              <span className={labelClassName}>{t("ccswitch.import_saved_config")}</span>
+              <Select
+                value={selectedConfigId}
+                onChange={onConfigChange}
+                options={[...configOptions]}
+                aria-label={t("ccswitch.import_saved_config")}
+                className={`${controlClassName} w-full`}
+              />
+            </label>
+          ) : null}
           <label className={fieldClassName}>
             <span className={labelClassName}>{t("ccswitch.import_provider_name")}</span>
             <TextInput

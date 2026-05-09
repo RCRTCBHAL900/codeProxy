@@ -74,6 +74,7 @@ describe("providers helpers", () => {
       {
         id: expect.stringContaining("sk-openai-provider-1234567890"),
         apiKey: "sk-openai-provider-1234567890",
+        disabled: false,
         proxyUrl: "https://proxy.example.com",
         proxyId: "hk",
         headersEntries: [{ id: expect.any(String), key: "x-entry", value: "edge" }],

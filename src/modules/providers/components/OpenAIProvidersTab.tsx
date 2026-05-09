@@ -5,6 +5,7 @@ import { Button } from "@/modules/ui/Button";
 import { Card } from "@/modules/ui/Card";
 import { EmptyState } from "@/modules/ui/EmptyState";
 import { ProviderStatusBar } from "@/modules/providers/ProviderStatusBar";
+import { ToggleSwitch } from "@/modules/ui/ToggleSwitch";
 
 interface OpenAIProvidersTabProps {
   providers: OpenAIProvider[];
@@ -22,6 +23,9 @@ interface OpenAIProvidersTabProps {
     totalSuccess: number;
     totalFailure: number;
   };
+  onToggleKeyEntryEnabled?: (providerIndex: number, entryIndex: number, enabled: boolean) => void;
+  selectedKeys?: Set<string>;
+  onToggleSelected?: (key: string, checked: boolean) => void;
 }
 
 export function OpenAIProvidersTab({
@@ -32,6 +36,9 @@ export function OpenAIProvidersTab({
   getKeyEntryStats,
   getProviderStats,
   getProviderStatusBar,
+  onToggleKeyEntryEnabled,
+  selectedKeys,
+  onToggleSelected,
 }: OpenAIProvidersTabProps) {
   const { t } = useTranslation();
 
@@ -39,6 +46,8 @@ export function OpenAIProvidersTab({
     <Card
       title={t("providers.openai_compatible")}
       description={t("providers.claude_desc")}
+      className="flex h-full min-h-0 flex-col"
+      bodyClassName="min-h-0 flex flex-1 flex-col"
       actions={
         <Button variant="primary" size="sm" onClick={() => openOpenAIEditor(null)}>
           <Plus size={14} />
@@ -52,8 +61,10 @@ export function OpenAIProvidersTab({
           description={t("providers.no_openai_desc")}
         />
       ) : (
-        <div className="space-y-3">
+        <div data-testid="providers-tab-scroll" className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
           {providers.map((provider, idx) => {
+            const selectionKey = provider.name.trim().toLowerCase();
+            const selected = selectedKeys?.has(selectionKey) ?? false;
             const headerEntries = Object.entries(provider.headers || {});
             const stats = getProviderStats(provider);
             const statusData = getProviderStatusBar(provider);
@@ -61,7 +72,14 @@ export function OpenAIProvidersTab({
             return (
               <div
                 key={`${provider.name}:${idx}`}
-                className="rounded-2xl border border-slate-200 bg-white/70 px-4 py-3 shadow-sm dark:border-neutral-800 dark:bg-neutral-950/60"
+                className={[
+                  "group rounded-2xl border border-slate-200 bg-white/70 px-4 py-3 shadow-sm transition-colors duration-200 ease-out hover:border-slate-300 hover:bg-white dark:border-neutral-800 dark:bg-neutral-950/60 dark:hover:border-neutral-700 dark:hover:bg-neutral-950/70",
+                  selected
+                    ? "border-slate-900 ring-1 ring-slate-300 dark:border-white dark:ring-white/20"
+                    : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -98,6 +116,7 @@ export function OpenAIProvidersTab({
                         <div className="space-y-1">
                           {provider.apiKeyEntries.map((entry, entryIndex) => {
                             const entryStats = getKeyEntryStats(entry);
+                            const entryEnabled = entry.disabled !== true;
                             return (
                               <div
                                 key={`${entry.apiKey}:${entryIndex}`}
@@ -113,13 +132,32 @@ export function OpenAIProvidersTab({
                                     </p>
                                   ) : null}
                                 </div>
-                                <div className="flex items-center gap-2 tabular-nums">
+                                <div className="flex flex-wrap items-center gap-2 tabular-nums">
+                                  <span
+                                    className={[
+                                      "rounded-full px-2 py-0.5 font-semibold",
+                                      entryEnabled
+                                        ? "bg-emerald-600/10 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200"
+                                        : "bg-amber-500/15 text-amber-700 dark:text-amber-200",
+                                    ].join(" ")}
+                                  >
+                                    {entryEnabled ? t("providers.enabled") : t("providers.disabled")}
+                                  </span>
                                   <span className="rounded-full bg-emerald-600/10 px-2 py-0.5 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200">
                                     {t("providers.success_stats", { count: entryStats.success })}
                                   </span>
                                   <span className="rounded-full bg-rose-600/10 px-2 py-0.5 text-rose-700 dark:bg-rose-500/15 dark:text-rose-200">
                                     {t("providers.failed_stats", { count: entryStats.failure })}
                                   </span>
+                                  {onToggleKeyEntryEnabled ? (
+                                    <ToggleSwitch
+                                      checked={entryEnabled}
+                                      ariaLabel={`${t("providers.enable_key_entry")} ${entryIndex + 1}`}
+                                      onCheckedChange={(enabled) =>
+                                        onToggleKeyEntryEnabled(idx, entryIndex, enabled)
+                                      }
+                                    />
+                                  ) : null}
                                 </div>
                               </div>
                             );
@@ -167,6 +205,26 @@ export function OpenAIProvidersTab({
                     <ProviderStatusBar data={statusData} />
                   </div>
                   <div className="flex items-center gap-2">
+                    {onToggleSelected ? (
+                      <div
+                        className={[
+                          "flex h-8 items-center justify-center px-1 transition-opacity",
+                          selected
+                            ? "pointer-events-auto opacity-100"
+                            : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100",
+                        ].join(" ")}
+                      >
+                        <input
+                          type="checkbox"
+                          aria-label={t("providers.select_provider", { name: provider.name })}
+                          checked={selected}
+                          onChange={(event) =>
+                            onToggleSelected(selectionKey, event.currentTarget.checked)
+                          }
+                          className="h-4 w-4 rounded border-slate-300 text-slate-900 accent-slate-900 focus-visible:ring-2 focus-visible:ring-slate-400/35 dark:border-neutral-700 dark:bg-neutral-950 dark:text-white dark:accent-white dark:focus-visible:ring-white/15"
+                        />
+                      </div>
+                    ) : null}
                     <Button variant="secondary" size="sm" onClick={() => openOpenAIEditor(idx)}>
                       <Settings2 size={14} />
                       {t("providers.edit")}

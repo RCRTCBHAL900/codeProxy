@@ -1,7 +1,5 @@
 import type { CcSwitchClientType } from "@/modules/ccswitch/ccswitchImport";
 
-export const CC_SWITCH_IMPORT_SETTINGS_STORAGE_KEY = "ccswitch.importSettings.v1";
-
 export type CcSwitchClaudeAuthField = "ANTHROPIC_API_KEY" | "ANTHROPIC_AUTH_TOKEN";
 
 export const CC_SWITCH_CLAUDE_AUTH_FIELDS: CcSwitchClaudeAuthField[] = [
@@ -93,43 +91,4 @@ export function normalizeCcSwitchImportSettings(
   }
 
   return result;
-}
-
-export function readCcSwitchImportSettings(): CcSwitchImportSettings {
-  try {
-    if (typeof window === "undefined") return normalizeCcSwitchImportSettings();
-    const raw = window.localStorage.getItem(CC_SWITCH_IMPORT_SETTINGS_STORAGE_KEY);
-    if (!raw) return normalizeCcSwitchImportSettings();
-    return normalizeCcSwitchImportSettings(JSON.parse(raw) as CcSwitchImportSettingsInput);
-  } catch {
-    return normalizeCcSwitchImportSettings();
-  }
-}
-
-export function writeCcSwitchImportSettings(
-  settings: CcSwitchImportSettingsInput,
-): CcSwitchImportSettings {
-  const normalized = normalizeCcSwitchImportSettings(settings);
-  try {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(
-        CC_SWITCH_IMPORT_SETTINGS_STORAGE_KEY,
-        JSON.stringify(normalized),
-      );
-    }
-  } catch {
-    // Ignore storage failures; callers still receive normalized settings.
-  }
-  return normalized;
-}
-
-export function resetCcSwitchImportSettings(): CcSwitchImportSettings {
-  try {
-    if (typeof window !== "undefined") {
-      window.localStorage.removeItem(CC_SWITCH_IMPORT_SETTINGS_STORAGE_KEY);
-    }
-  } catch {
-    // ignore storage failures
-  }
-  return normalizeCcSwitchImportSettings();
 }
