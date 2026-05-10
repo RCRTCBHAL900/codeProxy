@@ -153,12 +153,23 @@ describe("ChannelGroupsPage", () => {
       }
       if (path === "/channel-groups") {
         return Promise.resolve({
-          items: [{ name: "Kimi Pool", channels: ["kimi"] }],
+          items: [
+            {
+              name: "Kimi Pool",
+              channels: ["kimi"],
+              "channel-details": [{ name: "kimi", source: "kimi", display_tags: ["kimi"] }],
+            },
+          ],
         });
       }
       if (path.startsWith("/models?")) {
         return Promise.resolve({
-          data: [{ id: "kimi-k2.5" }, { id: "kimi-k2.6" }, { id: "gpt-should-not-leak" }],
+          data: [
+            { id: "kimi-k2" },
+            { id: "kimi-k2-thinking" },
+            { id: "kimi-k2.5" },
+            { id: "gpt-should-not-leak" },
+          ],
         });
       }
       if (path === "/auth-files") {
@@ -181,6 +192,16 @@ describe("ChannelGroupsPage", () => {
               id: "kimi-k2.5",
               owned_by: "kimi-code",
               description: "Kimi K2.5",
+            },
+            {
+              id: "kimi-k2",
+              owned_by: "moonshot",
+              description: "Kimi K2",
+            },
+            {
+              id: "kimi-k2-thinking",
+              owned_by: "moonshot",
+              description: "Kimi K2 Thinking",
             },
             {
               id: "gpt-should-not-leak",
@@ -217,6 +238,8 @@ describe("ChannelGroupsPage", () => {
 
     expect(await screen.findByLabelText("kimi-k2.5")).toBeInTheDocument();
     expect(await screen.findByLabelText("kimi-k2.6")).toBeInTheDocument();
+    expect(screen.queryByLabelText("kimi-k2")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("kimi-k2-thinking")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("gpt-should-not-leak")).not.toBeInTheDocument();
   });
 
