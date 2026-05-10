@@ -137,6 +137,89 @@ describe("ChannelGroupsPage", () => {
     expect(screen.queryByLabelText("gpt-should-not-leak")).not.toBeInTheDocument();
   });
 
+  test("keeps auth-file live models when an owner-mapped credential has models missing owner metadata", async () => {
+    window.localStorage.setItem(
+      "authFilesPage.modelOwnerGroupMap.v1",
+      JSON.stringify({ kimi: "kimi-code" }),
+    );
+    mockedApiGet.mockImplementation((path: string) => {
+      if (path === "/routing-config") {
+        return Promise.resolve({
+          strategy: "round-robin",
+          "include-default-group": true,
+          "channel-groups": [],
+          "path-routes": [],
+        });
+      }
+      if (path === "/channel-groups") {
+        return Promise.resolve({
+          items: [{ name: "Kimi Pool", channels: ["kimi"] }],
+        });
+      }
+      if (path.startsWith("/models?")) {
+        return Promise.resolve({
+          data: [{ id: "kimi-k2.5" }, { id: "kimi-k2.6" }, { id: "gpt-should-not-leak" }],
+        });
+      }
+      if (path === "/auth-files") {
+        return Promise.resolve({
+          files: [{ name: "kimi-account.json", type: "kimi", disabled: false }],
+        });
+      }
+      if (path === "/auth-files/models") {
+        return Promise.resolve({
+          models: [
+            { id: "kimi-k2.5", owned_by: "kimi-code" },
+            { id: "kimi-k2.6", display_name: "Kimi K2.6" },
+          ],
+        });
+      }
+      if (path === "/model-configs?scope=library") {
+        return Promise.resolve({
+          data: [
+            {
+              id: "kimi-k2.5",
+              owned_by: "kimi-code",
+              description: "Kimi K2.5",
+            },
+            {
+              id: "gpt-should-not-leak",
+              owned_by: "openai",
+              description: "Unmapped OpenAI model",
+            },
+          ],
+        });
+      }
+      if (
+        path === "/gemini-api-key" ||
+        path === "/claude-api-key" ||
+        path === "/codex-api-key" ||
+        path === "/opencode-go-api-key" ||
+        path === "/vertex-api-key" ||
+        path === "/openai-compatibility"
+      ) {
+        return Promise.resolve([]);
+      }
+      return Promise.resolve({});
+    });
+    const user = userEvent.setup();
+
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: "新增分组" }));
+    await user.type(screen.getByPlaceholderText("pro"), "kimi");
+    await user.type(screen.getByPlaceholderText("/pro"), "/kimi");
+    await user.click(screen.getByRole("combobox", { name: "选择渠道" }));
+    await user.click(await screen.findByRole("option", { name: "kimi" }));
+    await user.click(screen.getByRole("combobox", { name: "选择渠道" }));
+
+    await user.click(screen.getByRole("tab", { name: "模型列表" }));
+
+    expect(await screen.findByLabelText("kimi-k2.5")).toBeInTheDocument();
+    expect(await screen.findByLabelText("kimi-k2.6")).toBeInTheDocument();
+    expect(screen.queryByLabelText("gpt-should-not-leak")).not.toBeInTheDocument();
+  });
+
   test("shows channel tags in the selector options and selected rows", async () => {
     mockedApiGet.mockImplementation((path: string) => {
       if (path === "/routing-config") {
