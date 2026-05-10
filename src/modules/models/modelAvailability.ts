@@ -302,6 +302,7 @@ const loadAuthFileModelItems = async (
         for (const model of modelsByOwner.get(owner) ?? []) {
           addModel(map, { ...model, source: model.source || "auth-file-owner" });
         }
+        return;
       }
 
       try {
@@ -310,7 +311,7 @@ const loadAuthFileModelItems = async (
         for (const model of liveModels) {
           addModel(map, {
             id: model.id,
-            owned_by: owner || group || model.owned_by || undefined,
+            owned_by: model.owned_by,
             description: model.display_name,
             source: "auth-file",
           });

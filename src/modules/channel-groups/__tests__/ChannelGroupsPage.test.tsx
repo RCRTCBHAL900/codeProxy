@@ -137,7 +137,7 @@ describe("ChannelGroupsPage", () => {
     expect(screen.queryByLabelText("gpt-should-not-leak")).not.toBeInTheDocument();
   });
 
-  test("keeps auth-file live models when an owner-mapped credential has models missing owner metadata", async () => {
+  test("uses the configured auth-file model owner group as the authoritative model scope", async () => {
     window.localStorage.setItem(
       "authFilesPage.modelOwnerGroupMap.v1",
       JSON.stringify({ kimi: "kimi-code" }),
@@ -168,7 +168,7 @@ describe("ChannelGroupsPage", () => {
             { id: "kimi-k2" },
             { id: "kimi-k2-thinking" },
             { id: "kimi-k2.5" },
-            { id: "gpt-should-not-leak" },
+            { id: "kimi-k2.6" },
           ],
         });
       }
@@ -180,8 +180,10 @@ describe("ChannelGroupsPage", () => {
       if (path === "/auth-files/models") {
         return Promise.resolve({
           models: [
-            { id: "kimi-k2.5", owned_by: "kimi-code" },
-            { id: "kimi-k2.6", display_name: "Kimi K2.6" },
+            { id: "kimi-k2", display_name: "Kimi K2", owned_by: "moonshot" },
+            { id: "kimi-k2-thinking", display_name: "Kimi K2 Thinking", owned_by: "moonshot" },
+            { id: "kimi-k2.5", display_name: "Kimi K2.5", owned_by: "moonshot" },
+            { id: "kimi-k2.6", display_name: "Kimi K2.6", owned_by: "moonshot" },
           ],
         });
       }
@@ -194,19 +196,9 @@ describe("ChannelGroupsPage", () => {
               description: "Kimi K2.5",
             },
             {
-              id: "kimi-k2",
-              owned_by: "moonshot",
-              description: "Kimi K2",
-            },
-            {
-              id: "kimi-k2-thinking",
-              owned_by: "moonshot",
-              description: "Kimi K2 Thinking",
-            },
-            {
-              id: "gpt-should-not-leak",
-              owned_by: "openai",
-              description: "Unmapped OpenAI model",
+              id: "kimi-k2.6",
+              owned_by: "kimi-code",
+              description: "Kimi K2.6",
             },
           ],
         });
@@ -233,17 +225,16 @@ describe("ChannelGroupsPage", () => {
     await user.click(screen.getByRole("combobox", { name: "选择渠道" }));
     await user.click(await screen.findByRole("option", { name: "kimi" }));
     await user.click(screen.getByRole("combobox", { name: "选择渠道" }));
-
     await user.click(screen.getByRole("tab", { name: "模型列表" }));
 
-    expect(await screen.findByLabelText("kimi-k2.5")).toBeInTheDocument();
-    expect(await screen.findByLabelText("kimi-k2.6")).toBeInTheDocument();
-    expect(screen.queryByLabelText("kimi-k2")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("kimi-k2-thinking")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("gpt-should-not-leak")).not.toBeInTheDocument();
+    const table = await screen.findByRole("table", { name: "允许模型" });
+    expect(await within(table).findByLabelText("kimi-k2.5")).toBeInTheDocument();
+    expect(within(table).getByLabelText("kimi-k2.6")).toBeInTheDocument();
+    expect(within(table).queryByLabelText("kimi-k2")).not.toBeInTheDocument();
+    expect(within(table).queryByLabelText("kimi-k2-thinking")).not.toBeInTheDocument();
   });
 
-  test("uses the auth-file channel source as model owner when live Kimi models report moonshot", async () => {
+  test("keeps live model owner metadata when no auth-file model owner group is configured", async () => {
     mockedApiGet.mockImplementation((path: string) => {
       if (path === "/routing-config") {
         return Promise.resolve({
@@ -266,7 +257,7 @@ describe("ChannelGroupsPage", () => {
       }
       if (path.startsWith("/models?")) {
         return Promise.resolve({
-          data: [{ id: "kimi-k2" }, { id: "kimi-k2-thinking" }, { id: "kimi-k2.5" }],
+          data: [{ id: "kimi-k2" }],
         });
       }
       if (path === "/auth-files") {
@@ -276,11 +267,7 @@ describe("ChannelGroupsPage", () => {
       }
       if (path === "/auth-files/models") {
         return Promise.resolve({
-          models: [
-            { id: "kimi-k2", display_name: "Kimi K2", owned_by: "moonshot" },
-            { id: "kimi-k2-thinking", display_name: "Kimi K2 Thinking", owned_by: "moonshot" },
-            { id: "kimi-k2.5", display_name: "Kimi K2.5", owned_by: "moonshot" },
-          ],
+          models: [{ id: "kimi-k2", display_name: "Kimi K2", owned_by: "moonshot" }],
         });
       }
       if (path === "/model-configs?scope=library") {
@@ -312,10 +299,7 @@ describe("ChannelGroupsPage", () => {
 
     const table = await screen.findByRole("table", { name: "允许模型" });
     expect(await within(table).findByLabelText("kimi-k2")).toBeInTheDocument();
-    expect(within(table).getByLabelText("kimi-k2-thinking")).toBeInTheDocument();
-    expect(within(table).getByLabelText("kimi-k2.5")).toBeInTheDocument();
-    expect(within(table).getAllByText("kimi")).toHaveLength(3);
-    expect(within(table).queryByText("moonshot")).not.toBeInTheDocument();
+    expect(within(table).getByText("moonshot")).toBeInTheDocument();
   });
 
   test("shows channel tags in the selector options and selected rows", async () => {
