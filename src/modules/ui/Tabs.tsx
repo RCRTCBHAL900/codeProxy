@@ -119,7 +119,7 @@ export function TabsList({
       {indicator ? (
         <motion.div
           aria-hidden="true"
-          className="pointer-events-none absolute bottom-0.5 left-0 top-0.5 z-0 rounded-full bg-white shadow-sm shadow-black/[0.04] dark:bg-[#46464C] dark:shadow-none"
+          className="pointer-events-none absolute bottom-0.5 left-0 top-0.5 z-0 rounded-full bg-white shadow-sm shadow-black/4 dark:bg-[#46464C] dark:shadow-none"
           initial={false}
           animate={{ x: indicator.x, width: indicator.width }}
           transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}

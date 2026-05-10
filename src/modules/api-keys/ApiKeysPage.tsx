@@ -30,10 +30,7 @@ import { ApiKeyUsageModal } from "@/modules/api-keys/components/ApiKeyUsageModal
 import { useApiKeyPermissionOptions } from "@/modules/api-keys/hooks/useApiKeyPermissionOptions";
 import { useApiKeyUsageView } from "@/modules/api-keys/hooks/useApiKeyUsageView";
 import { CcSwitchImportCardList } from "@/modules/api-keys/components/CcSwitchImportCardList";
-import {
-  buildCcSwitchImportUrl,
-  openCcSwitchImportUrl,
-} from "@/modules/ccswitch/ccswitchImport";
+import { buildCcSwitchImportUrl, openCcSwitchImportUrl } from "@/modules/ccswitch/ccswitchImport";
 import {
   normalizeCcSwitchClaudeAuthField,
   normalizeCcSwitchImportSettings,

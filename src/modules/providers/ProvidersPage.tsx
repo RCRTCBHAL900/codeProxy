@@ -116,7 +116,6 @@ export function ProvidersPage() {
   } | null>(null);
   const [importing, setImporting] = useState(false);
   const [selectedExportKeys, setSelectedExportKeys] = useState<string[]>([]);
-
   const refreshTab = useCallback(
     async (tabId: typeof tab) => {
       setLoading(true);
@@ -356,6 +355,7 @@ export function ProvidersPage() {
         provider === "vertex" ||
         provider === "bedrock"
       ) {
+        setSelectedExportKeys([]);
         setTab(provider);
         await refreshTab(provider);
         if (action === "new") {
@@ -370,6 +370,7 @@ export function ProvidersPage() {
       }
 
       if (provider === "openai") {
+        setSelectedExportKeys([]);
         setTab("openai");
         await refreshTab("openai");
         if (action === "new") {
@@ -384,6 +385,7 @@ export function ProvidersPage() {
       }
 
       if (provider === "ampcode") {
+        setSelectedExportKeys([]);
         setTab("ampcode");
         await refreshTab("ampcode");
       }
@@ -466,18 +468,14 @@ export function ProvidersPage() {
           return openaiProviders;
       }
     },
-    [
-      bedrockKeys,
-      claudeKeys,
-      codexKeys,
-      geminiKeys,
-      openCodeGoKeys,
-      openaiProviders,
-      vertexKeys,
-    ],
+    [bedrockKeys, claudeKeys, codexKeys, geminiKeys, openCodeGoKeys, openaiProviders, vertexKeys],
   );
 
   const currentImportKind = getImportKind();
+  const isActiveTabListLoading = useCallback(
+    (tabId: ProviderTab) => tab === tabId && loading,
+    [loading, tab],
+  );
   const currentTabItems = useMemo(
     () => (currentImportKind ? getCurrentItems(currentImportKind) : []),
     [currentImportKind, getCurrentItems],
@@ -533,13 +531,13 @@ export function ProvidersPage() {
   );
 
   useEffect(() => {
-    setSelectedExportKeys([]);
-  }, [tab]);
-
-  useEffect(() => {
+    if (selectedExportKeys.length === 0) return;
     const selectableKeySet = new Set(currentSelectableKeys);
-    setSelectedExportKeys((prev) => prev.filter((key) => selectableKeySet.has(key)));
-  }, [currentSelectableKeys]);
+    const next = selectedExportKeys.filter((key) => selectableKeySet.has(key));
+    if (next.length !== selectedExportKeys.length) {
+      setSelectedExportKeys(next);
+    }
+  }, [currentSelectableKeys, selectedExportKeys]);
 
   const toggleExportSelection = useCallback((key: string, checked: boolean) => {
     setSelectedExportKeys((prev) => {
@@ -597,7 +595,11 @@ export function ProvidersPage() {
       }
 
       try {
-        const preview = prepareProviderImport(kind, await file.text(), getCurrentItems(kind) as never);
+        const preview = prepareProviderImport(
+          kind,
+          await file.text(),
+          getCurrentItems(kind) as never,
+        );
         setImportPreview({
           kind,
           nextItems: preview.nextItems,
@@ -656,7 +658,7 @@ export function ProvidersPage() {
 
       <div
         data-testid="providers-batch-actions"
-        className="flex flex-wrap items-center gap-1.5 rounded-2xl bg-slate-50/80 px-2 py-1.5 transition-colors duration-200 ease-out dark:bg-white/[0.03]"
+        className="flex flex-wrap items-center gap-1.5 rounded-2xl bg-slate-50/80 px-2 py-1.5 transition-colors duration-200 ease-out dark:bg-white/3"
       >
         {currentImportKind ? (
           <>
@@ -675,9 +677,8 @@ export function ProvidersPage() {
             <Button
               variant="secondary"
               size="sm"
-              className="!h-8 px-2 text-xs"
+              className="h-8! px-2 text-xs"
               onClick={() => importInputRef.current?.click()}
-              disabled={loading}
             >
               <Upload size={14} />
               {t("providers.import_json")}
@@ -685,7 +686,7 @@ export function ProvidersPage() {
             <Button
               variant="secondary"
               size="sm"
-              className="!h-8 px-2 text-xs"
+              className="h-8! px-2 text-xs"
               onClick={handleExport}
               disabled={currentTabItems.length === 0}
             >
@@ -695,7 +696,7 @@ export function ProvidersPage() {
             <Button
               variant="secondary"
               size="sm"
-              className="!h-8 px-2 text-xs"
+              className="h-8! px-2 text-xs"
               onClick={() => selectAllCurrentItems(!allCurrentSelected)}
               disabled={currentSelectableKeys.length === 0}
             >
@@ -709,7 +710,7 @@ export function ProvidersPage() {
             <Button
               variant="ghost"
               size="sm"
-              className="!h-8 px-2 text-xs"
+              className="h-8! px-2 text-xs"
               onClick={() => setSelectedExportKeys([])}
               disabled={selectedExportCount === 0}
             >
@@ -718,7 +719,7 @@ export function ProvidersPage() {
             <Button
               variant="secondary"
               size="sm"
-              className="!h-8 px-2 text-xs"
+              className="h-8! px-2 text-xs"
               onClick={handleExportSelected}
               disabled={selectedExportCount === 0}
             >
@@ -729,7 +730,7 @@ export function ProvidersPage() {
         <Button
           variant="secondary"
           size="sm"
-          className="!h-8 px-2 text-xs"
+          className="h-8! px-2 text-xs"
           onClick={() => void refreshTab(tab)}
           disabled={loading}
         >
@@ -742,6 +743,8 @@ export function ProvidersPage() {
         value={tab}
         onValueChange={(next) => {
           const nextTab = next as typeof tab;
+          if (nextTab === tab) return;
+          setSelectedExportKeys([]);
           setTab(nextTab);
           void refreshTab(nextTab);
         }}
@@ -787,160 +790,167 @@ export function ProvidersPage() {
             </TabsList>
           </div>
           <TabsContent value="gemini" className="flex min-h-0 flex-1 flex-col">
-          <ProviderKeyListCard
-            icon={Globe}
-            title={t("providers.gemini_keys")}
-            description={t("providers.openai_desc")}
-            items={geminiKeys}
-            onAdd={() => openKeyEditor("gemini", null)}
-            onEdit={(idx) => openKeyEditor("gemini", idx)}
-            onDelete={(idx) => setConfirm({ type: "deleteKey", keyType: "gemini", index: idx })}
-            onToggleEnabled={(idx, enabled) => void toggleKeyEnabled("gemini", idx, enabled)}
-            getStats={getSimpleStats}
-            getStatusBar={getSimpleStatusBar}
-            getAccessSummary={getProviderAccessSummary}
-            getLatencyEntry={getLatencyEntry}
-            checkLatency={checkLatency}
-            selectedKeys={selectedExportKeySet}
-            onToggleSelected={toggleExportSelection}
-          />
-        </TabsContent>
+            <ProviderKeyListCard
+              icon={Globe}
+              title={t("providers.gemini_keys")}
+              description={t("providers.openai_desc")}
+              items={geminiKeys}
+              loading={isActiveTabListLoading("gemini")}
+              onAdd={() => openKeyEditor("gemini", null)}
+              onEdit={(idx) => openKeyEditor("gemini", idx)}
+              onDelete={(idx) => setConfirm({ type: "deleteKey", keyType: "gemini", index: idx })}
+              onToggleEnabled={(idx, enabled) => void toggleKeyEnabled("gemini", idx, enabled)}
+              getStats={getSimpleStats}
+              getStatusBar={getSimpleStatusBar}
+              getAccessSummary={getProviderAccessSummary}
+              getLatencyEntry={getLatencyEntry}
+              checkLatency={checkLatency}
+              selectedKeys={selectedExportKeySet}
+              onToggleSelected={toggleExportSelection}
+            />
+          </TabsContent>
 
           <TabsContent value="claude" className="flex min-h-0 flex-1 flex-col">
-          <ProviderKeyListCard
-            icon={Bot}
-            title={t("providers.claude_keys")}
-            description={t("providers.codex_desc")}
-            items={claudeKeys}
-            onAdd={() => openKeyEditor("claude", null)}
-            onEdit={(idx) => openKeyEditor("claude", idx)}
-            onDelete={(idx) => setConfirm({ type: "deleteKey", keyType: "claude", index: idx })}
-            onToggleEnabled={(idx, enabled) => void toggleKeyEnabled("claude", idx, enabled)}
-            getStats={getSimpleStats}
-            getStatusBar={getSimpleStatusBar}
-            getAccessSummary={getProviderAccessSummary}
-            getLatencyEntry={getLatencyEntry}
-            checkLatency={checkLatency}
-            selectedKeys={selectedExportKeySet}
-            onToggleSelected={toggleExportSelection}
-          />
-        </TabsContent>
+            <ProviderKeyListCard
+              icon={Bot}
+              title={t("providers.claude_keys")}
+              description={t("providers.codex_desc")}
+              items={claudeKeys}
+              loading={isActiveTabListLoading("claude")}
+              onAdd={() => openKeyEditor("claude", null)}
+              onEdit={(idx) => openKeyEditor("claude", idx)}
+              onDelete={(idx) => setConfirm({ type: "deleteKey", keyType: "claude", index: idx })}
+              onToggleEnabled={(idx, enabled) => void toggleKeyEnabled("claude", idx, enabled)}
+              getStats={getSimpleStats}
+              getStatusBar={getSimpleStatusBar}
+              getAccessSummary={getProviderAccessSummary}
+              getLatencyEntry={getLatencyEntry}
+              checkLatency={checkLatency}
+              selectedKeys={selectedExportKeySet}
+              onToggleSelected={toggleExportSelection}
+            />
+          </TabsContent>
 
           <TabsContent value="codex" className="flex min-h-0 flex-1 flex-col">
-          <ProviderKeyListCard
-            icon={FileKey}
-            title={t("providers.codex_keys")}
-            description={t("providers.gemini_desc")}
-            items={codexKeys}
-            onAdd={() => openKeyEditor("codex", null)}
-            onEdit={(idx) => openKeyEditor("codex", idx)}
-            onDelete={(idx) => setConfirm({ type: "deleteKey", keyType: "codex", index: idx })}
-            onToggleEnabled={(idx, enabled) => void toggleKeyEnabled("codex", idx, enabled)}
-            getStats={getSimpleStats}
-            getStatusBar={getSimpleStatusBar}
-            getAccessSummary={getProviderAccessSummary}
-            getLatencyEntry={getLatencyEntry}
-            checkLatency={checkLatency}
-            selectedKeys={selectedExportKeySet}
-            onToggleSelected={toggleExportSelection}
-          />
-        </TabsContent>
+            <ProviderKeyListCard
+              icon={FileKey}
+              title={t("providers.codex_keys")}
+              description={t("providers.gemini_desc")}
+              items={codexKeys}
+              loading={isActiveTabListLoading("codex")}
+              onAdd={() => openKeyEditor("codex", null)}
+              onEdit={(idx) => openKeyEditor("codex", idx)}
+              onDelete={(idx) => setConfirm({ type: "deleteKey", keyType: "codex", index: idx })}
+              onToggleEnabled={(idx, enabled) => void toggleKeyEnabled("codex", idx, enabled)}
+              getStats={getSimpleStats}
+              getStatusBar={getSimpleStatusBar}
+              getAccessSummary={getProviderAccessSummary}
+              getLatencyEntry={getLatencyEntry}
+              checkLatency={checkLatency}
+              selectedKeys={selectedExportKeySet}
+              onToggleSelected={toggleExportSelection}
+            />
+          </TabsContent>
 
           <TabsContent value="opencode-go" className="flex min-h-0 flex-1 flex-col">
-          <ProviderKeyListCard
-            icon={FileKey}
-            iconSrc={iconOpenCodeLight}
-            iconDarkSrc={iconOpenCodeDark}
-            title={t("providers.opencode_go_keys")}
-            description={t("providers.opencode_go_desc")}
-            items={openCodeGoKeys}
-            onAdd={() => openKeyEditor("opencode-go", null)}
-            onEdit={(idx) => openKeyEditor("opencode-go", idx)}
-            onDelete={(idx) =>
-              setConfirm({ type: "deleteKey", keyType: "opencode-go", index: idx })
-            }
-            onToggleEnabled={(idx, enabled) => void toggleKeyEnabled("opencode-go", idx, enabled)}
-            getStats={getSimpleStats}
-            getStatusBar={getSimpleStatusBar}
-            getAccessSummary={getProviderAccessSummary}
-            showBaseUrl={false}
-            selectedKeys={selectedExportKeySet}
-            onToggleSelected={toggleExportSelection}
-          />
-        </TabsContent>
+            <ProviderKeyListCard
+              icon={FileKey}
+              iconSrc={iconOpenCodeLight}
+              iconDarkSrc={iconOpenCodeDark}
+              title={t("providers.opencode_go_keys")}
+              description={t("providers.opencode_go_desc")}
+              items={openCodeGoKeys}
+              loading={isActiveTabListLoading("opencode-go")}
+              onAdd={() => openKeyEditor("opencode-go", null)}
+              onEdit={(idx) => openKeyEditor("opencode-go", idx)}
+              onDelete={(idx) =>
+                setConfirm({ type: "deleteKey", keyType: "opencode-go", index: idx })
+              }
+              onToggleEnabled={(idx, enabled) => void toggleKeyEnabled("opencode-go", idx, enabled)}
+              getStats={getSimpleStats}
+              getStatusBar={getSimpleStatusBar}
+              getAccessSummary={getProviderAccessSummary}
+              showBaseUrl={false}
+              selectedKeys={selectedExportKeySet}
+              onToggleSelected={toggleExportSelection}
+            />
+          </TabsContent>
 
           <TabsContent value="vertex" className="flex min-h-0 flex-1 flex-col">
-          <ProviderKeyListCard
-            icon={Database}
-            title={t("providers.vertex_keys")}
-            description={t("providers.vertex_desc")}
-            items={vertexKeys}
-            onAdd={() => openKeyEditor("vertex", null)}
-            onEdit={(idx) => openKeyEditor("vertex", idx)}
-            onDelete={(idx) => setConfirm({ type: "deleteKey", keyType: "vertex", index: idx })}
-            getStats={getSimpleStats}
-            getStatusBar={getSimpleStatusBar}
-            getAccessSummary={getProviderAccessSummary}
-            getLatencyEntry={getLatencyEntry}
-            checkLatency={checkLatency}
-            selectedKeys={selectedExportKeySet}
-            onToggleSelected={toggleExportSelection}
-          />
-        </TabsContent>
+            <ProviderKeyListCard
+              icon={Database}
+              title={t("providers.vertex_keys")}
+              description={t("providers.vertex_desc")}
+              items={vertexKeys}
+              loading={isActiveTabListLoading("vertex")}
+              onAdd={() => openKeyEditor("vertex", null)}
+              onEdit={(idx) => openKeyEditor("vertex", idx)}
+              onDelete={(idx) => setConfirm({ type: "deleteKey", keyType: "vertex", index: idx })}
+              getStats={getSimpleStats}
+              getStatusBar={getSimpleStatusBar}
+              getAccessSummary={getProviderAccessSummary}
+              getLatencyEntry={getLatencyEntry}
+              checkLatency={checkLatency}
+              selectedKeys={selectedExportKeySet}
+              onToggleSelected={toggleExportSelection}
+            />
+          </TabsContent>
 
           <TabsContent value="bedrock" className="flex min-h-0 flex-1 flex-col">
-          <ProviderKeyListCard
-            icon={Cloud}
-            title={t("providers.bedrock_keys")}
-            description={t("providers.bedrock_desc")}
-            items={bedrockKeys}
-            onAdd={() => openKeyEditor("bedrock", null)}
-            onEdit={(idx) => openKeyEditor("bedrock", idx)}
-            onDelete={(idx) => setConfirm({ type: "deleteKey", keyType: "bedrock", index: idx })}
-            onToggleEnabled={(idx, enabled) => void toggleKeyEnabled("bedrock", idx, enabled)}
-            getStats={getSimpleStats}
-            getStatusBar={getSimpleStatusBar}
-            getAccessSummary={getProviderAccessSummary}
-            getLatencyEntry={getLatencyEntry}
-            checkLatency={checkLatency}
-            selectedKeys={selectedExportKeySet}
-            onToggleSelected={toggleExportSelection}
-          />
-        </TabsContent>
+            <ProviderKeyListCard
+              icon={Cloud}
+              title={t("providers.bedrock_keys")}
+              description={t("providers.bedrock_desc")}
+              items={bedrockKeys}
+              loading={isActiveTabListLoading("bedrock")}
+              onAdd={() => openKeyEditor("bedrock", null)}
+              onEdit={(idx) => openKeyEditor("bedrock", idx)}
+              onDelete={(idx) => setConfirm({ type: "deleteKey", keyType: "bedrock", index: idx })}
+              onToggleEnabled={(idx, enabled) => void toggleKeyEnabled("bedrock", idx, enabled)}
+              getStats={getSimpleStats}
+              getStatusBar={getSimpleStatusBar}
+              getAccessSummary={getProviderAccessSummary}
+              getLatencyEntry={getLatencyEntry}
+              checkLatency={checkLatency}
+              selectedKeys={selectedExportKeySet}
+              onToggleSelected={toggleExportSelection}
+            />
+          </TabsContent>
 
           <TabsContent value="openai" className="flex min-h-0 flex-1 flex-col">
-          <OpenAIProvidersTab
-            providers={openaiProviders}
-            openOpenAIEditor={openOpenAIEditor}
-            confirmDelete={(index) => setConfirm({ type: "deleteOpenAI", index })}
-            maskApiKey={maskApiKey}
-            getKeyEntryStats={getOpenAIKeyEntryStats}
-            getProviderStats={getOpenAIProviderStats}
-            getProviderStatusBar={getOpenAIProviderStatusBar}
-            onToggleKeyEntryEnabled={(providerIndex, entryIndex, enabled) =>
-              void toggleOpenAIKeyEntryEnabled(providerIndex, entryIndex, enabled)
-            }
-            selectedKeys={selectedExportKeySet}
-            onToggleSelected={toggleExportSelection}
-          />
-        </TabsContent>
+            <OpenAIProvidersTab
+              providers={openaiProviders}
+              loading={isActiveTabListLoading("openai")}
+              openOpenAIEditor={openOpenAIEditor}
+              confirmDelete={(index) => setConfirm({ type: "deleteOpenAI", index })}
+              maskApiKey={maskApiKey}
+              getKeyEntryStats={getOpenAIKeyEntryStats}
+              getProviderStats={getOpenAIProviderStats}
+              getProviderStatusBar={getOpenAIProviderStatusBar}
+              onToggleKeyEntryEnabled={(providerIndex, entryIndex, enabled) =>
+                void toggleOpenAIKeyEntryEnabled(providerIndex, entryIndex, enabled)
+              }
+              selectedKeys={selectedExportKeySet}
+              onToggleSelected={toggleExportSelection}
+            />
+          </TabsContent>
 
           <TabsContent value="ampcode" className="flex min-h-0 flex-1 flex-col">
-          <AmpcodePanel
-            loading={loading}
-            isPending={isPending}
-            saveAmpcode={saveAmpcode}
-            ampcode={ampcode}
-            ampMappings={ampMappings}
-            ampUpstreamUrl={ampUpstreamUrl}
-            setAmpUpstreamUrl={setAmpUpstreamUrl}
-            ampUpstreamApiKey={ampUpstreamApiKey}
-            setAmpUpstreamApiKey={setAmpUpstreamApiKey}
-            ampForceMappings={ampForceMappings}
-            setAmpForceMappings={setAmpForceMappings}
-            setAmpMappings={setAmpMappings}
-          />
-        </TabsContent>
+            <AmpcodePanel
+              loading={loading}
+              isPending={isPending}
+              saveAmpcode={saveAmpcode}
+              ampcode={ampcode}
+              ampMappings={ampMappings}
+              ampUpstreamUrl={ampUpstreamUrl}
+              setAmpUpstreamUrl={setAmpUpstreamUrl}
+              ampUpstreamApiKey={ampUpstreamApiKey}
+              setAmpUpstreamApiKey={setAmpUpstreamApiKey}
+              ampForceMappings={ampForceMappings}
+              setAmpForceMappings={setAmpForceMappings}
+              setAmpMappings={setAmpMappings}
+            />
+          </TabsContent>
         </div>
       </Tabs>
 
@@ -1024,11 +1034,7 @@ export function ProvidersPage() {
         }}
         footer={
           <>
-            <Button
-              variant="secondary"
-              onClick={() => setImportPreview(null)}
-              disabled={importing}
-            >
+            <Button variant="secondary" onClick={() => setImportPreview(null)} disabled={importing}>
               {t("common.cancel")}
             </Button>
             <Button

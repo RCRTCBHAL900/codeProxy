@@ -263,13 +263,13 @@ export function TooltipBubble({
       role="tooltip"
       className={[
         interactive ? "pointer-events-auto select-text" : "pointer-events-none",
-        "w-max max-w-[calc(100vw-2rem)] rounded-xl border border-slate-200 bg-white/95 px-2 py-1.5 text-xs shadow-lg backdrop-blur transition-opacity duration-150 sm:max-w-[28rem] dark:border-neutral-800 dark:bg-neutral-950/90 dark:text-white",
+        "w-max max-w-[calc(100vw-2rem)] rounded-xl border border-slate-200 bg-white/95 px-2 py-1.5 text-xs shadow-lg backdrop-blur transition-opacity duration-150 sm:max-w-md dark:border-neutral-800 dark:bg-neutral-950/90 dark:text-white",
       ].join(" ")}
       style={style}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
-      <span className="block break-words text-slate-900 dark:text-white">{content}</span>
+      <span className="block wrap-break-word text-slate-900 dark:text-white">{content}</span>
     </span>,
     document.body,
   );

@@ -9,6 +9,7 @@ import { ToggleSwitch } from "@/modules/ui/ToggleSwitch";
 
 interface OpenAIProvidersTabProps {
   providers: OpenAIProvider[];
+  loading?: boolean;
   openOpenAIEditor: (index: number | null) => void;
   confirmDelete: (index: number) => void;
   maskApiKey: (value: string) => string;
@@ -30,6 +31,7 @@ interface OpenAIProvidersTabProps {
 
 export function OpenAIProvidersTab({
   providers,
+  loading = false,
   openOpenAIEditor,
   confirmDelete,
   maskApiKey,
@@ -48,6 +50,7 @@ export function OpenAIProvidersTab({
       description={t("providers.claude_desc")}
       className="flex h-full min-h-0 flex-col"
       bodyClassName="min-h-0 flex flex-1 flex-col"
+      loading={loading}
       actions={
         <Button variant="primary" size="sm" onClick={() => openOpenAIEditor(null)}>
           <Plus size={14} />
@@ -61,7 +64,10 @@ export function OpenAIProvidersTab({
           description={t("providers.no_openai_desc")}
         />
       ) : (
-        <div data-testid="providers-tab-scroll" className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+        <div
+          data-testid="providers-tab-scroll"
+          className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1"
+        >
           {providers.map((provider, idx) => {
             const selectionKey = provider.name.trim().toLowerCase();
             const selected = selectedKeys?.has(selectionKey) ?? false;
@@ -141,7 +147,9 @@ export function OpenAIProvidersTab({
                                         : "bg-amber-500/15 text-amber-700 dark:text-amber-200",
                                     ].join(" ")}
                                   >
-                                    {entryEnabled ? t("providers.enabled") : t("providers.disabled")}
+                                    {entryEnabled
+                                      ? t("providers.enabled")
+                                      : t("providers.disabled")}
                                   </span>
                                   <span className="rounded-full bg-emerald-600/10 px-2 py-0.5 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200">
                                     {t("providers.success_stats", { count: entryStats.success })}

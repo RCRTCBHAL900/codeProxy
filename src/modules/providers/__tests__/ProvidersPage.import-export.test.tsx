@@ -9,7 +9,7 @@ import { ToastProvider } from "@/modules/ui/ToastProvider";
 const mocks = vi.hoisted(() => ({
   getGeminiKeys: vi.fn(async () => []),
   getClaudeConfigs: vi.fn(async () => []),
-  getCodexConfigs: vi.fn(async () => []),
+  getCodexConfigs: vi.fn(async (): Promise<any[]> => []),
   getOpenCodeGoConfigs: vi.fn(async () => []),
   getVertexConfigs: vi.fn(async () => []),
   getBedrockConfigs: vi.fn(async () => []),
@@ -127,6 +127,109 @@ describe("ProvidersPage import/export", () => {
     expect(clickSpy).toHaveBeenCalled();
   });
 
+  test("keeps import enabled while switching and refreshing provider tabs", async () => {
+    const user = userEvent.setup();
+    let resolveRefresh: ((configs: any[]) => void) | undefined;
+    mocks.getCodexConfigs
+      .mockResolvedValueOnce([
+        {
+          name: "Codex Main",
+          apiKey: "sk-old",
+        },
+      ] as any)
+      .mockImplementationOnce(() => new Promise<any[]>((resolve) => (resolveRefresh = resolve)));
+
+    render(
+      <MemoryRouter initialEntries={["/ai-providers"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/ai-providers/*" element={<ProvidersPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    const importButton = await screen.findByRole("button", { name: /Import JSON/i });
+    expect(importButton).toBeEnabled();
+
+    await user.click(screen.getByRole("tab", { name: /Codex/ }));
+    expect(importButton).toBeEnabled();
+    expect(await screen.findByText("Codex Main")).toBeInTheDocument();
+
+    const refreshButton = screen.getByRole("button", { name: /Refresh/i });
+    await user.click(refreshButton);
+    expect(importButton).toBeEnabled();
+    await waitFor(() => expect(refreshButton).toBeDisabled());
+    expect(refreshButton.querySelector("svg")).toHaveClass("animate-spin");
+    expect(screen.getByText(/Loading/i)).toBeInTheDocument();
+
+    resolveRefresh?.([]);
+    await waitFor(() => expect(mocks.getCodexConfigs).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText(/Loading/i)).not.toBeInTheDocument());
+  });
+
+  test("shows page loading when switching to an unloaded provider tab", async () => {
+    const user = userEvent.setup();
+    let resolveSwitch: ((configs: any[]) => void) | undefined;
+    mocks.getCodexConfigs.mockImplementationOnce(
+      () => new Promise<any[]>((resolve) => (resolveSwitch = resolve)),
+    );
+
+    render(
+      <MemoryRouter initialEntries={["/ai-providers"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/ai-providers/*" element={<ProvidersPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    const refreshButton = await screen.findByRole("button", { name: /Refresh/i });
+    await user.click(screen.getByRole("tab", { name: /Codex/ }));
+
+    await waitFor(() => expect(refreshButton).toBeDisabled());
+    expect(refreshButton.querySelector("svg")).toHaveClass("animate-spin");
+    expect(screen.getByText(/Loading/i)).toBeInTheDocument();
+
+    resolveSwitch?.([
+      {
+        name: "Codex Main",
+        apiKey: "sk-old",
+      },
+    ]);
+    expect(await screen.findByText("Codex Main")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText(/Loading/i)).not.toBeInTheDocument());
+  });
+
+  test("does not refresh when clicking the active provider tab again", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter initialEntries={["/ai-providers"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/ai-providers/*" element={<ProvidersPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    const codexTab = await screen.findByRole("tab", { name: /Codex/ });
+    await user.click(codexTab);
+    expect(await screen.findByText("Codex Main")).toBeInTheDocument();
+    await waitFor(() => expect(mocks.getCodexConfigs).toHaveBeenCalledTimes(1));
+
+    await user.click(codexTab);
+    expect(mocks.getCodexConfigs).toHaveBeenCalledTimes(1);
+  });
+
   test("keeps provider import, refresh, and export actions together in the batch toolbar", async () => {
     const user = userEvent.setup();
 
@@ -148,7 +251,9 @@ describe("ProvidersPage import/export", () => {
     const batchActions = screen.getByTestId("providers-batch-actions");
     expect(within(batchActions).getByRole("button", { name: /Import JSON/i })).toBeInTheDocument();
     expect(within(batchActions).getByRole("button", { name: /Refresh/i })).toBeInTheDocument();
-    expect(within(batchActions).getByRole("button", { name: /^Export JSON$/i })).toBeInTheDocument();
+    expect(
+      within(batchActions).getByRole("button", { name: /^Export JSON$/i }),
+    ).toBeInTheDocument();
   });
 
   test("locks the page shell height and uses a dedicated scroll area for the active tab content", async () => {
