@@ -120,6 +120,34 @@ describe("RoutingConfigEditor", () => {
     expect(screen.getByTestId("group-strategy")).toHaveTextContent("fill-first");
   });
 
+  test("shows fill-first as the table scheduling mode for that group", async () => {
+    await i18n.changeLanguage("zh-CN");
+
+    render(
+      <Harness
+        initialValues={{
+          ...DEFAULT_VISUAL_VALUES,
+          routingChannelGroups: [
+            {
+              id: "group-kimicode",
+              name: "kimicode",
+              description: "",
+              strategy: "fill-first",
+              channels: [
+                { id: "channel-main", name: "Main Codex", priority: "" },
+                { id: "channel-backup", name: "Backup Claude", priority: "" },
+              ],
+              allowedModels: [],
+            },
+          ],
+        }}
+      />,
+    );
+
+    const row = screen.getByRole("row", { name: /kimicode/i });
+    expect(row).toHaveTextContent("优先首个可用渠道");
+  });
+
   test("defaults model tab selections to every channel-scoped model", async () => {
     await i18n.changeLanguage("zh-CN");
     const user = userEvent.setup();

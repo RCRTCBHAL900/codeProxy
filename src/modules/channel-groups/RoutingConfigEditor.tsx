@@ -746,11 +746,14 @@ export function RoutingConfigEditor({
         width: "w-[190px] min-w-[190px]",
         cellClassName: "min-w-0 whitespace-nowrap text-slate-700 dark:text-white/75",
         render: (group) => {
-          const summary = summarizePriorityMode(
-            group.channels,
-            t("channel_groups_page.round_robin_mode"),
-            t("channel_groups_page.priority_short"),
-          );
+          const summary =
+            group.strategy === "fill-first"
+              ? t("channel_groups_page.routing_strategy_fill_first")
+              : summarizePriorityMode(
+                  group.channels,
+                  t("channel_groups_page.round_robin_mode"),
+                  t("channel_groups_page.priority_short"),
+                );
           return (
             <OverflowTooltip content={summary} className="block min-w-0">
               <span className="block truncate">{summary}</span>
