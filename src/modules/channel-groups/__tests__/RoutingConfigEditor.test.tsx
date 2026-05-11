@@ -36,7 +36,10 @@ function Harness({
   availableChannelDetails,
 }: {
   initialValues?: VisualConfigValues;
-  loadModelsForChannels?: (channels: string[]) => Promise<Array<string | RoutingModelOption>>;
+  loadModelsForChannels?: (
+    channels: string[],
+    groupName?: string,
+  ) => Promise<Array<string | RoutingModelOption>>;
   availableChannels?: string[];
   availableChannelDetails?: Record<string, ChannelGroupChannelDetail>;
 }) {
@@ -378,11 +381,45 @@ describe("RoutingConfigEditor", () => {
     render(<Harness />);
 
     expect(screen.queryByText("模型数")).not.toBeInTheDocument();
-    expect(screen.getByText("系统默认")).toBeInTheDocument();
-    expect(screen.getByText("/")).toBeInTheDocument();
-    expect(screen.getByText("models")).toBeInTheDocument();
-    expect(screen.getByText("chat")).toBeInTheDocument();
-    expect(screen.getByText("images")).toBeInTheDocument();
+    expect(screen.queryByText("可用能力")).not.toBeInTheDocument();
+    expect(screen.getByRole("row", { name: /系统默认/ })).toHaveTextContent("/");
+    expect(screen.queryByText("系统内置，只读")).not.toBeInTheDocument();
+    expect(screen.queryByText("models")).not.toBeInTheDocument();
+    expect(screen.queryByText("chat")).not.toBeInTheDocument();
+    expect(screen.queryByText("images")).not.toBeInTheDocument();
+  });
+
+  test("keeps the system root route in the table without a delete action", async () => {
+    await i18n.changeLanguage("zh-CN");
+
+    render(<Harness />);
+
+    const row = screen.getByRole("row", { name: /系统默认/ });
+    expect(row).toHaveTextContent("/");
+    expect(within(row).getByRole("button", { name: "编辑分组" })).toBeInTheDocument();
+    expect(within(row).queryByRole("button", { name: "删除分组" })).not.toBeInTheDocument();
+  });
+
+  test("updates model permissions for the system root route", async () => {
+    await i18n.changeLanguage("zh-CN");
+    const user = userEvent.setup();
+    const loadModelsForChannels = vi.fn(async (channels: string[], groupName?: string) =>
+      channels.length === 0 && groupName === "default"
+        ? ["gpt-root-allowed", "gpt-root-hidden"]
+        : [],
+    );
+
+    render(<Harness loadModelsForChannels={loadModelsForChannels} />);
+
+    const row = screen.getByRole("row", { name: /系统默认/ });
+    await user.click(within(row).getByRole("button", { name: "编辑分组" }));
+
+    expect(await screen.findByLabelText("gpt-root-allowed")).toBeChecked();
+    await user.click(screen.getByLabelText("gpt-root-hidden"));
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(loadModelsForChannels).toHaveBeenCalledWith([], "default");
+    expect(screen.getByTestId("allowed-models")).toHaveTextContent("gpt-root-allowed");
   });
 
   test("rejects the system root path for custom groups", async () => {

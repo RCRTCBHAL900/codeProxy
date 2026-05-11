@@ -28,6 +28,9 @@ import {
   type ModelPricing,
 } from "@/modules/models/modelAvailability";
 
+const SYSTEM_DEFAULT_GROUP_NAME = "default";
+const SYSTEM_DEFAULT_GROUP_ID = "system-default-root";
+
 type GroupDraft = {
   name: string;
   description: string;
@@ -56,16 +59,6 @@ const RESERVED_ROUTE_PREFIXES = new Set([
   "anthropic",
   "codex",
 ]);
-
-const PATH_CAPABILITIES = [
-  { label: "models", method: "GET", suffix: "/v1/models" },
-  { label: "chat", method: "POST", suffix: "/v1/chat/completions" },
-  { label: "completions", method: "POST", suffix: "/v1/completions" },
-  { label: "responses", method: "POST", suffix: "/v1/responses" },
-  { label: "messages", method: "POST", suffix: "/v1/messages" },
-  { label: "images", method: "POST", suffix: "/v1/images/generations" },
-  { label: "v1beta", method: "GET", suffix: "/v1beta/models" },
-] as const;
 
 const createEmptyGroupDraft = (): GroupDraft => ({
   name: "",
@@ -206,32 +199,6 @@ function routePathUsesReservedPrefix(path: string): boolean {
   return RESERVED_ROUTE_PREFIXES.has(firstSegment);
 }
 
-function joinRouteCapabilityPath(routePath: string, suffix: string): string {
-  const normalized = routePath === "/" ? "" : routePath.replace(/\/+$/g, "");
-  return `${normalized}${suffix}`;
-}
-
-function PathCapabilityTags({ routePath }: { routePath: string }) {
-  return (
-    <div className="flex min-w-0 flex-wrap gap-1.5">
-      {PATH_CAPABILITIES.map((capability) => {
-        const fullPath = joinRouteCapabilityPath(routePath, capability.suffix);
-        return (
-          <HoverTooltip
-            key={`${capability.method}-${capability.suffix}`}
-            content={`${capability.method} ${fullPath}`}
-            placement="bottom"
-          >
-            <span className="inline-flex items-center rounded-md border border-slate-200/70 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:border-neutral-700/50 dark:bg-neutral-800/70 dark:text-white/75">
-              {capability.label}
-            </span>
-          </HoverTooltip>
-        );
-      })}
-    </div>
-  );
-}
-
 function summarizeList(values: string[], moreLabel: string): string {
   if (values.length === 0) return "";
   if (values.length === 1) return values[0];
@@ -323,7 +290,10 @@ export function RoutingConfigEditor({
   availableChannels: string[];
   availableChannelDetails?: Record<string, ChannelGroupChannelDetail>;
   onRefreshAvailableChannels?: () => Promise<void> | void;
-  loadModelsForChannels?: (channels: string[]) => Promise<RoutingModelLoadResult[]>;
+  loadModelsForChannels?: (
+    channels: string[],
+    groupName?: string,
+  ) => Promise<RoutingModelLoadResult[]>;
   onChange: (values: Partial<VisualConfigValues>) => void;
 }) {
   const { t } = useTranslation();
@@ -354,6 +324,31 @@ export function RoutingConfigEditor({
     });
     return map;
   }, [values.routingPathRoutes]);
+
+  const displayGroups = useMemo<RoutingChannelGroupEntry[]>(() => {
+    const defaultIndex = values.routingChannelGroups.findIndex(
+      (group) => group.name.trim().toLowerCase() === SYSTEM_DEFAULT_GROUP_NAME,
+    );
+    if (defaultIndex >= 0) {
+      const defaultGroup = values.routingChannelGroups[defaultIndex];
+      return [
+        { ...defaultGroup, system: true },
+        ...values.routingChannelGroups.filter((_, index) => index !== defaultIndex),
+      ];
+    }
+    return [
+      {
+        id: SYSTEM_DEFAULT_GROUP_ID,
+        name: SYSTEM_DEFAULT_GROUP_NAME,
+        description: "",
+        strategy: "round-robin",
+        channels: [],
+        allowedModels: [],
+        system: true,
+      },
+      ...values.routingChannelGroups,
+    ];
+  }, [values.routingChannelGroups]);
 
   const channelOptions = useMemo(() => {
     return availableChannels
@@ -401,6 +396,10 @@ export function RoutingConfigEditor({
     () => groupDraft.channels.map((channel) => channel.name.trim()).filter(Boolean),
     [groupDraft.channels],
   );
+
+  const editingSystemDefaultGroup =
+    groupEditorId === SYSTEM_DEFAULT_GROUP_ID ||
+    (groupEditorId !== null && groupDraft.name.trim().toLowerCase() === SYSTEM_DEFAULT_GROUP_NAME);
 
   const selectedModelSet = useMemo(
     () => new Set(groupDraft.allowedModels.map((model) => model.trim()).filter(Boolean)),
@@ -454,6 +453,7 @@ export function RoutingConfigEditor({
   );
 
   const groupDraftError = useMemo(() => {
+    if (editingSystemDefaultGroup) return "";
     if (!groupDraft.name.trim()) return t("channel_groups_page.group_name_required");
     if (!primaryRoute.path.trim()) return t("channel_groups_page.route_path_required");
     if (routePathInputIsRoot(primaryRoute.path)) {
@@ -486,6 +486,7 @@ export function RoutingConfigEditor({
     return "";
   }, [
     draftStaleChannels.length,
+    editingSystemDefaultGroup,
     groupDraft.channels.length,
     groupDraft.name,
     groupEditorId,
@@ -510,28 +511,37 @@ export function RoutingConfigEditor({
   const openEditGroup = useCallback(
     (group: RoutingChannelGroupEntry) => {
       void Promise.resolve(onRefreshAvailableChannels?.()).catch(() => undefined);
+      const isSystemDefault =
+        group.system || group.name.trim().toLowerCase() === SYSTEM_DEFAULT_GROUP_NAME;
       const groupName = group.name.trim().toLowerCase();
       const existingRoutes = values.routingPathRoutes
         .filter((route) => route.group.trim().toLowerCase() === groupName)
         .map((route) => ({ ...route, id: route.id || makeClientId() }))
         .slice(0, 1);
-      setGroupEditorId(group.id);
+      setGroupEditorId(
+        isSystemDefault && group.id === SYSTEM_DEFAULT_GROUP_ID
+          ? SYSTEM_DEFAULT_GROUP_ID
+          : group.id,
+      );
       setGroupDraft({
         name: group.name,
         description: group.description,
         strategy: group.strategy === "fill-first" ? "fill-first" : "round-robin",
         channels: cloneMembers(group.channels),
         allowedModels: group.allowedModels ?? [],
-        routes:
-          existingRoutes.length > 0
+        routes: isSystemDefault
+          ? []
+          : existingRoutes.length > 0
             ? existingRoutes
             : [{ ...EMPTY_ROUTE_DRAFT(), group: group.name.trim() }],
       });
-      setGroupEditorTab("basic");
+      setGroupEditorTab(isSystemDefault ? "models" : "basic");
       setModelOptions([]);
       setModelsError("");
       setModelsSelectionTouched((group.allowedModels ?? []).length > 0);
-      notifyStaleChannels(group.name.trim(), staleChannelsByGroup.get(group.id) ?? []);
+      if (!isSystemDefault) {
+        notifyStaleChannels(group.name.trim(), staleChannelsByGroup.get(group.id) ?? []);
+      }
       setGroupEditorOpen(true);
     },
     [
@@ -625,6 +635,40 @@ export function RoutingConfigEditor({
 
   const saveGroupDraft = useCallback(() => {
     if (groupDraftError) return;
+    if (editingSystemDefaultGroup) {
+      const allowedModels = Array.from(
+        new Set(groupDraft.allowedModels.map((model) => model.trim()).filter(Boolean)),
+      );
+      const existingDefault = values.routingChannelGroups.find(
+        (group) => group.name.trim().toLowerCase() === SYSTEM_DEFAULT_GROUP_NAME,
+      );
+      const defaultGroup: RoutingChannelGroupEntry = {
+        id: existingDefault?.id ?? makeClientId(),
+        name: SYSTEM_DEFAULT_GROUP_NAME,
+        description: existingDefault?.description ?? "",
+        strategy: existingDefault?.strategy === "fill-first" ? "fill-first" : "round-robin",
+        channels: existingDefault ? cloneMembers(existingDefault.channels) : [],
+        allowedModels,
+      };
+      const defaultRoutes = values.routingPathRoutes.filter(
+        (route) => route.group.trim().toLowerCase() === SYSTEM_DEFAULT_GROUP_NAME,
+      );
+      update({
+        routingChannelGroups: existingDefault
+          ? values.routingChannelGroups.map((group) =>
+              group.id === existingDefault.id ? defaultGroup : group,
+            )
+          : [defaultGroup, ...values.routingChannelGroups],
+        routingPathRoutes: [
+          ...values.routingPathRoutes.filter(
+            (route) => route.group.trim().toLowerCase() !== SYSTEM_DEFAULT_GROUP_NAME,
+          ),
+          ...defaultRoutes,
+        ],
+      });
+      closeGroupEditor();
+      return;
+    }
     const groupName = groupDraft.name.trim();
     const normalizedDraft: RoutingChannelGroupEntry = {
       id: groupEditorId ?? makeClientId(),
@@ -678,6 +722,7 @@ export function RoutingConfigEditor({
     closeGroupEditor();
   }, [
     closeGroupEditor,
+    editingSystemDefaultGroup,
     groupDraft,
     groupDraftError,
     groupEditorId,
@@ -716,7 +761,9 @@ export function RoutingConfigEditor({
         width: "w-[150px] min-w-[150px]",
         cellClassName: "min-w-0 whitespace-nowrap font-medium",
         render: (group, index) => {
-          const name = group.name.trim() || t("visual_config.group_n", { n: index + 1 });
+          const name = group.system
+            ? t("channel_groups_page.system_default_route")
+            : group.name.trim() || t("visual_config.group_n", { n: index + 1 });
           return (
             <OverflowTooltip content={name} className="block min-w-0">
               <span className="block truncate">{name}</span>
@@ -730,7 +777,9 @@ export function RoutingConfigEditor({
         width: "w-[220px] min-w-[220px]",
         cellClassName: "min-w-0 whitespace-nowrap text-slate-500 dark:text-white/55",
         render: (group) => {
-          const description = group.description.trim() || t("channel_groups_page.no_description");
+          const description = group.system
+            ? t("channel_groups_page.system_default_route_description")
+            : group.description.trim() || t("channel_groups_page.no_description");
           return (
             <OverflowTooltip content={description} className="block min-w-0">
               <span className="block truncate">{description}</span>
@@ -749,17 +798,6 @@ export function RoutingConfigEditor({
             {group.channels.length}
           </span>
         ),
-      },
-      {
-        key: "capabilities",
-        label: t("channel_groups_page.table_capabilities"),
-        width: "w-[300px] min-w-[300px]",
-        cellClassName: "min-w-0",
-        render: (group) => {
-          const routes = routesByGroup.get(group.name.trim().toLowerCase()) ?? [];
-          const routePath = routes[0]?.path.trim() || `/${group.name.trim()}`;
-          return <PathCapabilityTags routePath={routePath} />;
-        },
       },
       {
         key: "status",
@@ -839,6 +877,13 @@ export function RoutingConfigEditor({
         width: "w-[190px] min-w-[190px]",
         cellClassName: "min-w-0 whitespace-nowrap text-slate-700 dark:text-white/75",
         render: (group) => {
+          if (group.system) {
+            return (
+              <span className="text-slate-400 dark:text-white/35">
+                {t("channel_groups_page.none")}
+              </span>
+            );
+          }
           const summary =
             group.strategy === "fill-first"
               ? t("channel_groups_page.routing_strategy_fill_first")
@@ -860,6 +905,9 @@ export function RoutingConfigEditor({
         width: "w-[220px] min-w-[220px]",
         cellClassName: "min-w-0 whitespace-nowrap text-slate-700 dark:text-white/75",
         render: (group) => {
+          if (group.system) {
+            return <span className="font-mono text-slate-900 dark:text-white">/</span>;
+          }
           const routes = routesByGroup.get(group.name.trim().toLowerCase()) ?? [];
           const routePaths = routes.map((route) => route.path.trim()).filter(Boolean);
           if (routePaths.length === 0) {
@@ -909,16 +957,18 @@ export function RoutingConfigEditor({
             >
               <Pencil size={15} />
             </button>
-            <button
-              type="button"
-              onClick={() => setDeleteGroupTarget(group)}
-              disabled={disabled}
-              className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-40 dark:text-white/50 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-              title={t("visual_config.delete_group")}
-              aria-label={t("visual_config.delete_group")}
-            >
-              <Trash2 size={15} />
-            </button>
+            {group.system ? null : (
+              <button
+                type="button"
+                onClick={() => setDeleteGroupTarget(group)}
+                disabled={disabled}
+                className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-40 dark:text-white/50 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                title={t("visual_config.delete_group")}
+                aria-label={t("visual_config.delete_group")}
+              >
+                <Trash2 size={15} />
+              </button>
+            )}
           </div>
         ),
       },
@@ -1114,7 +1164,10 @@ export function RoutingConfigEditor({
 
   useEffect(() => {
     if (!groupEditorOpen || groupEditorTab !== "models") return;
-    if (selectedChannelValues.length === 0 || !loadModelsForChannels) {
+    if (
+      (!editingSystemDefaultGroup && selectedChannelValues.length === 0) ||
+      !loadModelsForChannels
+    ) {
       setModelOptions([]);
       setModelsError("");
       return;
@@ -1124,7 +1177,10 @@ export function RoutingConfigEditor({
     setModelsLoading(true);
     setModelsError("");
     setModelOptions([]);
-    loadModelsForChannels(selectedChannelValues)
+    const modelLoader = editingSystemDefaultGroup
+      ? loadModelsForChannels(selectedChannelValues, SYSTEM_DEFAULT_GROUP_NAME)
+      : loadModelsForChannels(selectedChannelValues);
+    modelLoader
       .then((models) => {
         if (cancelled) return;
         const optionMap = new Map<string, RoutingModelOption>();
@@ -1161,6 +1217,7 @@ export function RoutingConfigEditor({
   }, [
     groupEditorOpen,
     groupEditorTab,
+    editingSystemDefaultGroup,
     loadModelsForChannels,
     modelsSelectionTouched,
     selectedChannelValues,
@@ -1177,35 +1234,22 @@ export function RoutingConfigEditor({
           </Button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2.5 dark:border-neutral-800 dark:bg-neutral-900/45">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-200">
-              {t("channel_groups_page.system_default_route")}
-            </span>
-            <span className="font-mono text-sm font-semibold text-slate-900 dark:text-white">
-              /
-            </span>
-            <span className="text-xs text-slate-500 dark:text-white/45">
-              {t("channel_groups_page.system_route_readonly")}
-            </span>
-          </div>
-          <PathCapabilityTags routePath="/" />
-        </div>
-
         <VirtualTable<RoutingChannelGroupEntry>
-          rows={values.routingChannelGroups}
+          rows={displayGroups}
           columns={groupColumns}
           rowKey={(group) => group.id}
           virtualize={false}
           rowHeight={44}
           height="h-auto max-h-[68vh]"
-          minWidth="min-w-[1660px]"
+          minWidth="min-w-[1360px]"
           caption={t("channel_groups_page.table_group")}
           emptyText={t("channel_groups_page.empty_groups")}
           rowClassName={(group) =>
-            (staleChannelsByGroup.get(group.id)?.length ?? 0) > 0
-              ? "bg-rose-50/35 dark:bg-rose-500/5"
-              : ""
+            group.system
+              ? "bg-slate-50/55 dark:bg-neutral-900/45"
+              : (staleChannelsByGroup.get(group.id)?.length ?? 0) > 0
+                ? "bg-rose-50/35 dark:bg-rose-500/5"
+                : ""
           }
         />
       </div>
@@ -1213,7 +1257,11 @@ export function RoutingConfigEditor({
       <Modal
         open={groupEditorOpen}
         title={
-          groupEditorId ? t("channel_groups_page.edit_group") : t("channel_groups_page.add_group")
+          editingSystemDefaultGroup
+            ? t("channel_groups_page.edit_system_default_route")
+            : groupEditorId
+              ? t("channel_groups_page.edit_group")
+              : t("channel_groups_page.add_group")
         }
         description={t("channel_groups_page.group_modal_desc")}
         onClose={closeGroupEditor}
@@ -1282,9 +1330,11 @@ export function RoutingConfigEditor({
             <div data-testid="group-editor-tabs-shell" className="flex min-h-0 flex-1 flex-col">
               <div className="shrink-0">
                 <TabsList>
-                  <TabsTrigger value="basic">
-                    {t("channel_groups_page.basic_config_tab")}
-                  </TabsTrigger>
+                  {editingSystemDefaultGroup ? null : (
+                    <TabsTrigger value="basic">
+                      {t("channel_groups_page.basic_config_tab")}
+                    </TabsTrigger>
+                  )}
                   <TabsTrigger value="models">{t("channel_groups_page.models_tab")}</TabsTrigger>
                 </TabsList>
               </div>
@@ -1444,7 +1494,7 @@ export function RoutingConfigEditor({
                     </div>
                   </div>
 
-                  {selectedChannelValues.length === 0 ? (
+                  {!editingSystemDefaultGroup && selectedChannelValues.length === 0 ? (
                     <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500 dark:border-neutral-800 dark:bg-neutral-900/60 dark:text-white/55">
                       {t("channel_groups_page.models_need_channels")}
                     </div>
