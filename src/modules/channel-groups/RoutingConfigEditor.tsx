@@ -28,6 +28,9 @@ import {
   type ModelPricing,
 } from "@/modules/models/modelAvailability";
 
+const SYSTEM_DEFAULT_GROUP_NAME = "default";
+const SYSTEM_DEFAULT_GROUP_ID = "system-default-root";
+
 type GroupDraft = {
   name: string;
   description: string;
@@ -45,6 +48,17 @@ export type RoutingModelOption = {
 };
 
 type RoutingModelLoadResult = string | RoutingModelOption;
+
+const RESERVED_ROUTE_PREFIXES = new Set([
+  "manage",
+  "management.html",
+  "v0",
+  "v1",
+  "v1beta",
+  "api",
+  "anthropic",
+  "codex",
+]);
 
 const createEmptyGroupDraft = (): GroupDraft => ({
   name: "",
@@ -160,6 +174,31 @@ function normalizeRoutePathInput(value: string): string {
   return `/${trimmed}`;
 }
 
+function routePathInputIsRoot(value: string): boolean {
+  let trimmed = value.trim();
+  if (!trimmed) return false;
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol && parsed.host) {
+      trimmed = decodeURIComponent(parsed.pathname || "");
+    }
+  } catch {
+    // Keep non-URL inputs as-is.
+  }
+
+  const queryIndex = trimmed.search(/[?#]/);
+  if (queryIndex >= 0) {
+    trimmed = trimmed.slice(0, queryIndex);
+  }
+  return trimmed.replace(/^\/+|\/+$/g, "") === "";
+}
+
+function routePathUsesReservedPrefix(path: string): boolean {
+  const firstSegment = path.replace(/^\/+/, "").split("/")[0]?.toLowerCase() ?? "";
+  return RESERVED_ROUTE_PREFIXES.has(firstSegment);
+}
+
 function summarizeList(values: string[], moreLabel: string): string {
   if (values.length === 0) return "";
   if (values.length === 1) return values[0];
@@ -251,7 +290,10 @@ export function RoutingConfigEditor({
   availableChannels: string[];
   availableChannelDetails?: Record<string, ChannelGroupChannelDetail>;
   onRefreshAvailableChannels?: () => Promise<void> | void;
-  loadModelsForChannels?: (channels: string[]) => Promise<RoutingModelLoadResult[]>;
+  loadModelsForChannels?: (
+    channels: string[],
+    groupName?: string,
+  ) => Promise<RoutingModelLoadResult[]>;
   onChange: (values: Partial<VisualConfigValues>) => void;
 }) {
   const { t } = useTranslation();
@@ -259,6 +301,7 @@ export function RoutingConfigEditor({
   const [groupEditorOpen, setGroupEditorOpen] = useState(false);
   const [groupEditorId, setGroupEditorId] = useState<string | null>(null);
   const [deleteGroupTarget, setDeleteGroupTarget] = useState<RoutingChannelGroupEntry | null>(null);
+  const [issueGroup, setIssueGroup] = useState<RoutingChannelGroupEntry | null>(null);
   const [groupDraft, setGroupDraft] = useState<GroupDraft>(() => createEmptyGroupDraft());
   const [groupEditorTab, setGroupEditorTab] = useState<"basic" | "models">("basic");
   const [modelOptions, setModelOptions] = useState<RoutingModelOption[]>([]);
@@ -282,6 +325,31 @@ export function RoutingConfigEditor({
     });
     return map;
   }, [values.routingPathRoutes]);
+
+  const displayGroups = useMemo<RoutingChannelGroupEntry[]>(() => {
+    const defaultIndex = values.routingChannelGroups.findIndex(
+      (group) => group.name.trim().toLowerCase() === SYSTEM_DEFAULT_GROUP_NAME,
+    );
+    if (defaultIndex >= 0) {
+      const defaultGroup = values.routingChannelGroups[defaultIndex];
+      return [
+        { ...defaultGroup, system: true },
+        ...values.routingChannelGroups.filter((_, index) => index !== defaultIndex),
+      ];
+    }
+    return [
+      {
+        id: SYSTEM_DEFAULT_GROUP_ID,
+        name: SYSTEM_DEFAULT_GROUP_NAME,
+        description: "",
+        strategy: "round-robin",
+        channels: [],
+        allowedModels: [],
+        system: true,
+      },
+      ...values.routingChannelGroups,
+    ];
+  }, [values.routingChannelGroups]);
 
   const channelOptions = useMemo(() => {
     return availableChannels
@@ -325,10 +393,19 @@ export function RoutingConfigEditor({
     return map;
   }, [getStaleChannels, values.routingChannelGroups]);
 
+  const issueStaleChannels = useMemo(
+    () => (issueGroup ? (staleChannelsByGroup.get(issueGroup.id) ?? []) : []),
+    [issueGroup, staleChannelsByGroup],
+  );
+
   const selectedChannelValues = useMemo(
     () => groupDraft.channels.map((channel) => channel.name.trim()).filter(Boolean),
     [groupDraft.channels],
   );
+
+  const editingSystemDefaultGroup =
+    groupEditorId === SYSTEM_DEFAULT_GROUP_ID ||
+    (groupEditorId !== null && groupDraft.name.trim().toLowerCase() === SYSTEM_DEFAULT_GROUP_NAME);
 
   const selectedModelSet = useMemo(
     () => new Set(groupDraft.allowedModels.map((model) => model.trim()).filter(Boolean)),
@@ -382,9 +459,30 @@ export function RoutingConfigEditor({
   );
 
   const groupDraftError = useMemo(() => {
+    if (editingSystemDefaultGroup) return "";
     if (!groupDraft.name.trim()) return t("channel_groups_page.group_name_required");
     if (!primaryRoute.path.trim()) return t("channel_groups_page.route_path_required");
+    if (routePathInputIsRoot(primaryRoute.path)) {
+      return t("channel_groups_page.route_path_root_reserved");
+    }
     if (!normalizedPrimaryRoutePath) return t("channel_groups_page.route_path_invalid");
+    if (routePathUsesReservedPrefix(normalizedPrimaryRoutePath)) {
+      return t("channel_groups_page.route_path_reserved");
+    }
+    const previousGroup = groupEditorId
+      ? values.routingChannelGroups.find((group) => group.id === groupEditorId)
+      : null;
+    const previousGroupName = previousGroup?.name.trim().toLowerCase() ?? "";
+    const duplicateRoute = values.routingPathRoutes.some((route) => {
+      if (
+        normalizeRoutePathInput(route.path).toLowerCase() !==
+        normalizedPrimaryRoutePath.toLowerCase()
+      ) {
+        return false;
+      }
+      return route.group.trim().toLowerCase() !== previousGroupName;
+    });
+    if (duplicateRoute) return t("channel_groups_page.route_path_duplicate");
     if (groupDraft.channels.length === 0) return t("channel_groups_page.group_channels_required");
     if (draftStaleChannels.length > 0) {
       return t("channel_groups_page.stale_channels_required_cleanup", {
@@ -394,11 +492,15 @@ export function RoutingConfigEditor({
     return "";
   }, [
     draftStaleChannels.length,
+    editingSystemDefaultGroup,
     groupDraft.channels.length,
     groupDraft.name,
+    groupEditorId,
     normalizedPrimaryRoutePath,
     primaryRoute.path,
     t,
+    values.routingChannelGroups,
+    values.routingPathRoutes,
   ]);
 
   const openCreateGroup = useCallback(() => {
@@ -413,30 +515,39 @@ export function RoutingConfigEditor({
   }, [onRefreshAvailableChannels]);
 
   const openEditGroup = useCallback(
-    (group: RoutingChannelGroupEntry) => {
+    (group: RoutingChannelGroupEntry, options?: { notifyStale?: boolean }) => {
       void Promise.resolve(onRefreshAvailableChannels?.()).catch(() => undefined);
+      const isSystemDefault =
+        group.system || group.name.trim().toLowerCase() === SYSTEM_DEFAULT_GROUP_NAME;
       const groupName = group.name.trim().toLowerCase();
       const existingRoutes = values.routingPathRoutes
         .filter((route) => route.group.trim().toLowerCase() === groupName)
         .map((route) => ({ ...route, id: route.id || makeClientId() }))
         .slice(0, 1);
-      setGroupEditorId(group.id);
+      setGroupEditorId(
+        isSystemDefault && group.id === SYSTEM_DEFAULT_GROUP_ID
+          ? SYSTEM_DEFAULT_GROUP_ID
+          : group.id,
+      );
       setGroupDraft({
         name: group.name,
         description: group.description,
         strategy: group.strategy === "fill-first" ? "fill-first" : "round-robin",
         channels: cloneMembers(group.channels),
         allowedModels: group.allowedModels ?? [],
-        routes:
-          existingRoutes.length > 0
+        routes: isSystemDefault
+          ? []
+          : existingRoutes.length > 0
             ? existingRoutes
             : [{ ...EMPTY_ROUTE_DRAFT(), group: group.name.trim() }],
       });
-      setGroupEditorTab("basic");
+      setGroupEditorTab(isSystemDefault ? "models" : "basic");
       setModelOptions([]);
       setModelsError("");
       setModelsSelectionTouched((group.allowedModels ?? []).length > 0);
-      notifyStaleChannels(group.name.trim(), staleChannelsByGroup.get(group.id) ?? []);
+      if (!isSystemDefault && options?.notifyStale !== false) {
+        notifyStaleChannels(group.name.trim(), staleChannelsByGroup.get(group.id) ?? []);
+      }
       setGroupEditorOpen(true);
     },
     [
@@ -530,6 +641,40 @@ export function RoutingConfigEditor({
 
   const saveGroupDraft = useCallback(() => {
     if (groupDraftError) return;
+    if (editingSystemDefaultGroup) {
+      const allowedModels = Array.from(
+        new Set(groupDraft.allowedModels.map((model) => model.trim()).filter(Boolean)),
+      );
+      const existingDefault = values.routingChannelGroups.find(
+        (group) => group.name.trim().toLowerCase() === SYSTEM_DEFAULT_GROUP_NAME,
+      );
+      const defaultGroup: RoutingChannelGroupEntry = {
+        id: existingDefault?.id ?? makeClientId(),
+        name: SYSTEM_DEFAULT_GROUP_NAME,
+        description: existingDefault?.description ?? "",
+        strategy: existingDefault?.strategy === "fill-first" ? "fill-first" : "round-robin",
+        channels: existingDefault ? cloneMembers(existingDefault.channels) : [],
+        allowedModels,
+      };
+      const defaultRoutes = values.routingPathRoutes.filter(
+        (route) => route.group.trim().toLowerCase() === SYSTEM_DEFAULT_GROUP_NAME,
+      );
+      update({
+        routingChannelGroups: existingDefault
+          ? values.routingChannelGroups.map((group) =>
+              group.id === existingDefault.id ? defaultGroup : group,
+            )
+          : [defaultGroup, ...values.routingChannelGroups],
+        routingPathRoutes: [
+          ...values.routingPathRoutes.filter(
+            (route) => route.group.trim().toLowerCase() !== SYSTEM_DEFAULT_GROUP_NAME,
+          ),
+          ...defaultRoutes,
+        ],
+      });
+      closeGroupEditor();
+      return;
+    }
     const groupName = groupDraft.name.trim();
     const normalizedDraft: RoutingChannelGroupEntry = {
       id: groupEditorId ?? makeClientId(),
@@ -583,6 +728,7 @@ export function RoutingConfigEditor({
     closeGroupEditor();
   }, [
     closeGroupEditor,
+    editingSystemDefaultGroup,
     groupDraft,
     groupDraftError,
     groupEditorId,
@@ -621,7 +767,9 @@ export function RoutingConfigEditor({
         width: "w-[150px] min-w-[150px]",
         cellClassName: "min-w-0 whitespace-nowrap font-medium",
         render: (group, index) => {
-          const name = group.name.trim() || t("visual_config.group_n", { n: index + 1 });
+          const name = group.system
+            ? t("channel_groups_page.system_default_route")
+            : group.name.trim() || t("visual_config.group_n", { n: index + 1 });
           return (
             <OverflowTooltip content={name} className="block min-w-0">
               <span className="block truncate">{name}</span>
@@ -635,7 +783,9 @@ export function RoutingConfigEditor({
         width: "w-[220px] min-w-[220px]",
         cellClassName: "min-w-0 whitespace-nowrap text-slate-500 dark:text-white/55",
         render: (group) => {
-          const description = group.description.trim() || t("channel_groups_page.no_description");
+          const description = group.system
+            ? t("channel_groups_page.system_default_route_description")
+            : group.description.trim() || t("channel_groups_page.no_description");
           return (
             <OverflowTooltip content={description} className="block min-w-0">
               <span className="block truncate">{description}</span>
@@ -656,26 +806,9 @@ export function RoutingConfigEditor({
         ),
       },
       {
-        key: "modelCount",
-        label: t("channel_groups_page.table_model_count"),
-        width: "w-[104px] min-w-[104px]",
-        headerClassName: "text-center",
-        cellClassName: "whitespace-nowrap text-center",
-        render: (group) =>
-          group.allowedModels.length > 0 ? (
-            <span className="inline-flex h-5 min-w-[24px] items-center justify-center rounded-md bg-violet-50 px-1.5 text-xs font-semibold tabular-nums text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
-              {group.allowedModels.length}
-            </span>
-          ) : (
-            <span className="text-xs text-slate-400 dark:text-white/35">
-              {t("channel_groups_page.all_models")}
-            </span>
-          ),
-      },
-      {
         key: "status",
         label: t("channel_groups_page.table_status"),
-        width: "w-[170px] min-w-[170px]",
+        width: "w-[112px] min-w-[112px]",
         cellClassName: "whitespace-nowrap",
         render: (group) => {
           const staleChannels = staleChannelsByGroup.get(group.id) ?? [];
@@ -689,15 +822,13 @@ export function RoutingConfigEditor({
           return (
             <button
               type="button"
-              onClick={() => openEditGroup(group)}
+              onClick={() => setIssueGroup(group)}
               disabled={disabled}
-              className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-40 dark:border-rose-400/30 dark:bg-rose-500/10 dark:text-rose-200 dark:hover:bg-rose-500/15"
+              title={t("channel_groups_page.view_issue_reason")}
+              className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300/50 disabled:opacity-40 dark:border-rose-400/30 dark:bg-rose-500/10 dark:text-rose-200 dark:hover:bg-rose-500/15 dark:focus-visible:ring-rose-300/20"
             >
               <TriangleAlert size={13} />
               <span>{t("channel_groups_page.status_invalid")}</span>
-              <span className="text-[11px] font-medium text-rose-600 dark:text-rose-200/85">
-                {t("channel_groups_page.deleted_channels_count", { count: staleChannels.length })}
-              </span>
             </button>
           );
         },
@@ -750,6 +881,13 @@ export function RoutingConfigEditor({
         width: "w-[190px] min-w-[190px]",
         cellClassName: "min-w-0 whitespace-nowrap text-slate-700 dark:text-white/75",
         render: (group) => {
+          if (group.system) {
+            return (
+              <span className="text-slate-400 dark:text-white/35">
+                {t("channel_groups_page.none")}
+              </span>
+            );
+          }
           const summary =
             group.strategy === "fill-first"
               ? t("channel_groups_page.routing_strategy_fill_first")
@@ -771,6 +909,9 @@ export function RoutingConfigEditor({
         width: "w-[220px] min-w-[220px]",
         cellClassName: "min-w-0 whitespace-nowrap text-slate-700 dark:text-white/75",
         render: (group) => {
+          if (group.system) {
+            return <span className="font-mono text-slate-900 dark:text-white">/</span>;
+          }
           const routes = routesByGroup.get(group.name.trim().toLowerCase()) ?? [];
           const routePaths = routes.map((route) => route.path.trim()).filter(Boolean);
           if (routePaths.length === 0) {
@@ -820,16 +961,18 @@ export function RoutingConfigEditor({
             >
               <Pencil size={15} />
             </button>
-            <button
-              type="button"
-              onClick={() => setDeleteGroupTarget(group)}
-              disabled={disabled}
-              className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-40 dark:text-white/50 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-              title={t("visual_config.delete_group")}
-              aria-label={t("visual_config.delete_group")}
-            >
-              <Trash2 size={15} />
-            </button>
+            {group.system ? null : (
+              <button
+                type="button"
+                onClick={() => setDeleteGroupTarget(group)}
+                disabled={disabled}
+                className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-40 dark:text-white/50 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                title={t("visual_config.delete_group")}
+                aria-label={t("visual_config.delete_group")}
+              >
+                <Trash2 size={15} />
+              </button>
+            )}
           </div>
         ),
       },
@@ -1025,7 +1168,10 @@ export function RoutingConfigEditor({
 
   useEffect(() => {
     if (!groupEditorOpen || groupEditorTab !== "models") return;
-    if (selectedChannelValues.length === 0 || !loadModelsForChannels) {
+    if (
+      (!editingSystemDefaultGroup && selectedChannelValues.length === 0) ||
+      !loadModelsForChannels
+    ) {
       setModelOptions([]);
       setModelsError("");
       return;
@@ -1035,7 +1181,10 @@ export function RoutingConfigEditor({
     setModelsLoading(true);
     setModelsError("");
     setModelOptions([]);
-    loadModelsForChannels(selectedChannelValues)
+    const modelLoader = editingSystemDefaultGroup
+      ? loadModelsForChannels(selectedChannelValues, SYSTEM_DEFAULT_GROUP_NAME)
+      : loadModelsForChannels(selectedChannelValues);
+    modelLoader
       .then((models) => {
         if (cancelled) return;
         const optionMap = new Map<string, RoutingModelOption>();
@@ -1072,6 +1221,7 @@ export function RoutingConfigEditor({
   }, [
     groupEditorOpen,
     groupEditorTab,
+    editingSystemDefaultGroup,
     loadModelsForChannels,
     modelsSelectionTouched,
     selectedChannelValues,
@@ -1089,27 +1239,117 @@ export function RoutingConfigEditor({
         </div>
 
         <VirtualTable<RoutingChannelGroupEntry>
-          rows={values.routingChannelGroups}
+          rows={displayGroups}
           columns={groupColumns}
           rowKey={(group) => group.id}
           virtualize={false}
           rowHeight={44}
           height="h-auto max-h-[68vh]"
-          minWidth="min-w-[1660px]"
+          minWidth="min-w-[1360px]"
           caption={t("channel_groups_page.table_group")}
           emptyText={t("channel_groups_page.empty_groups")}
           rowClassName={(group) =>
-            (staleChannelsByGroup.get(group.id)?.length ?? 0) > 0
-              ? "bg-rose-50/35 dark:bg-rose-500/5"
-              : ""
+            group.system
+              ? "bg-slate-50/55 dark:bg-neutral-900/45"
+              : (staleChannelsByGroup.get(group.id)?.length ?? 0) > 0
+                ? "bg-rose-50/35 dark:bg-rose-500/5"
+                : ""
           }
         />
       </div>
 
       <Modal
+        open={issueGroup !== null}
+        title={t("channel_groups_page.issue_modal_title")}
+        description={t("channel_groups_page.issue_modal_desc", {
+          group: issueGroup?.name.trim() || t("channel_groups_page.unnamed_group"),
+        })}
+        onClose={() => setIssueGroup(null)}
+        maxWidth="max-w-xl"
+        bodyClassName="space-y-4"
+        footer={
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button variant="secondary" onClick={() => setIssueGroup(null)}>
+              {t("common.close")}
+            </Button>
+            {issueGroup && issueStaleChannels.length > 0 ? (
+              <Button
+                variant="primary"
+                onClick={() => {
+                  const group = issueGroup;
+                  setIssueGroup(null);
+                  openEditGroup(group, { notifyStale: false });
+                }}
+                disabled={disabled}
+              >
+                {t("channel_groups_page.view_and_cleanup")}
+              </Button>
+            ) : null}
+          </div>
+        }
+      >
+        {issueGroup && issueStaleChannels.length > 0 ? (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-400/25 dark:bg-rose-500/10 dark:text-rose-100">
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white text-rose-600 dark:bg-rose-500/15 dark:text-rose-100">
+                  <TriangleAlert size={17} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold">{t("channel_groups_page.stale_alert_title")}</p>
+                  <p className="mt-1 text-xs leading-5 text-rose-700/90 dark:text-rose-100/80">
+                    {t("channel_groups_page.stale_alert_message", {
+                      count: issueStaleChannels.length,
+                    })}
+                  </p>
+                  <div className="mt-3 inline-flex items-center rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-rose-700 shadow-sm dark:bg-neutral-950/45 dark:text-rose-100">
+                    {t("channel_groups_page.deleted_channels_count", {
+                      count: issueStaleChannels.length,
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-neutral-800">
+              <div className="grid grid-cols-[minmax(0,1fr)_88px] bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500 dark:bg-neutral-900 dark:text-white/55">
+                <span>{t("channel_groups_page.table_channels")}</span>
+                <span>{t("channel_groups_page.table_status")}</span>
+              </div>
+              <div className="divide-y divide-slate-100 dark:divide-neutral-800">
+                {issueStaleChannels.map((channel) => (
+                  <div
+                    key={channel.id}
+                    className="grid grid-cols-[minmax(0,1fr)_88px] items-center gap-3 px-3 py-2.5 text-sm"
+                  >
+                    <OverflowTooltip content={channel.name} className="block min-w-0">
+                      <span className="block truncate font-medium text-slate-900 dark:text-white">
+                        {channel.name}
+                      </span>
+                    </OverflowTooltip>
+                    <span className="inline-flex justify-center rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 dark:bg-rose-500/15 dark:text-rose-100">
+                      {t("channel_groups_page.deleted_badge")}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500 dark:border-neutral-800 dark:bg-neutral-900/60 dark:text-white/55">
+            {t("channel_groups_page.issue_modal_empty")}
+          </div>
+        )}
+      </Modal>
+
+      <Modal
         open={groupEditorOpen}
         title={
-          groupEditorId ? t("channel_groups_page.edit_group") : t("channel_groups_page.add_group")
+          editingSystemDefaultGroup
+            ? t("channel_groups_page.edit_system_default_route")
+            : groupEditorId
+              ? t("channel_groups_page.edit_group")
+              : t("channel_groups_page.add_group")
         }
         description={t("channel_groups_page.group_modal_desc")}
         onClose={closeGroupEditor}
@@ -1178,9 +1418,11 @@ export function RoutingConfigEditor({
             <div data-testid="group-editor-tabs-shell" className="flex min-h-0 flex-1 flex-col">
               <div className="shrink-0">
                 <TabsList>
-                  <TabsTrigger value="basic">
-                    {t("channel_groups_page.basic_config_tab")}
-                  </TabsTrigger>
+                  {editingSystemDefaultGroup ? null : (
+                    <TabsTrigger value="basic">
+                      {t("channel_groups_page.basic_config_tab")}
+                    </TabsTrigger>
+                  )}
                   <TabsTrigger value="models">{t("channel_groups_page.models_tab")}</TabsTrigger>
                 </TabsList>
               </div>
@@ -1340,7 +1582,7 @@ export function RoutingConfigEditor({
                     </div>
                   </div>
 
-                  {selectedChannelValues.length === 0 ? (
+                  {!editingSystemDefaultGroup && selectedChannelValues.length === 0 ? (
                     <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500 dark:border-neutral-800 dark:bg-neutral-900/60 dark:text-white/55">
                       {t("channel_groups_page.models_need_channels")}
                     </div>

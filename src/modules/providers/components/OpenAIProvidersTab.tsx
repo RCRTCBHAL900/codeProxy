@@ -24,6 +24,7 @@ interface OpenAIProvidersTabProps {
     totalSuccess: number;
     totalFailure: number;
   };
+  onToggleProviderEnabled?: (providerIndex: number, enabled: boolean) => void;
   onToggleKeyEntryEnabled?: (providerIndex: number, entryIndex: number, enabled: boolean) => void;
   selectedKeys?: Set<string>;
   onToggleSelected?: (key: string, checked: boolean) => void;
@@ -38,6 +39,7 @@ export function OpenAIProvidersTab({
   getKeyEntryStats,
   getProviderStats,
   getProviderStatusBar,
+  onToggleProviderEnabled,
   onToggleKeyEntryEnabled,
   selectedKeys,
   onToggleSelected,
@@ -74,6 +76,7 @@ export function OpenAIProvidersTab({
             const headerEntries = Object.entries(provider.headers || {});
             const stats = getProviderStats(provider);
             const statusData = getProviderStatusBar(provider);
+            const providerEnabled = provider.disabled !== true;
 
             return (
               <div
@@ -83,15 +86,28 @@ export function OpenAIProvidersTab({
                   selected
                     ? "border-slate-900 ring-1 ring-slate-300 dark:border-white dark:ring-white/20"
                     : "",
+                  providerEnabled ? "" : "opacity-70",
                 ]
                   .filter(Boolean)
                   .join(" ")}
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-slate-900 dark:text-white">
-                      {provider.name}
-                    </p>
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <p className="truncate text-sm font-semibold text-slate-900 dark:text-white">
+                        {provider.name}
+                      </p>
+                      <span
+                        className={[
+                          "rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                          providerEnabled
+                            ? "bg-emerald-600/10 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200"
+                            : "bg-amber-500/15 text-amber-700 dark:text-amber-200",
+                        ].join(" ")}
+                      >
+                        {providerEnabled ? t("providers.enabled") : t("providers.disabled")}
+                      </span>
+                    </div>
                     {provider.prefix ? (
                       <p className="mt-1 truncate font-mono text-xs text-slate-700 dark:text-slate-200">
                         prefix: {provider.prefix}
@@ -213,6 +229,13 @@ export function OpenAIProvidersTab({
                     <ProviderStatusBar data={statusData} />
                   </div>
                   <div className="flex items-center gap-2">
+                    {onToggleProviderEnabled ? (
+                      <ToggleSwitch
+                        checked={providerEnabled}
+                        ariaLabel={`${t("providers.enable_provider")} ${provider.name}`}
+                        onCheckedChange={(enabled) => onToggleProviderEnabled(idx, enabled)}
+                      />
+                    ) : null}
                     {onToggleSelected ? (
                       <div
                         className={[

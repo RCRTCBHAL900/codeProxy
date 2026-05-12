@@ -36,7 +36,10 @@ function Harness({
   availableChannelDetails,
 }: {
   initialValues?: VisualConfigValues;
-  loadModelsForChannels?: (channels: string[]) => Promise<Array<string | RoutingModelOption>>;
+  loadModelsForChannels?: (
+    channels: string[],
+    groupName?: string,
+  ) => Promise<Array<string | RoutingModelOption>>;
   availableChannels?: string[];
   availableChannelDetails?: Record<string, ChannelGroupChannelDetail>;
 }) {
@@ -323,7 +326,7 @@ describe("RoutingConfigEditor", () => {
     await user.type(screen.getByPlaceholderText("pro"), "team-url");
     await user.type(
       screen.getByPlaceholderText("/pro"),
-      "https://relay.07230805.xyz/openai/team-url",
+      "https://relay.example.test/openai/team-url",
     );
     await user.click(screen.getByRole("combobox", { name: "选择渠道" }));
     await user.click(screen.getByRole("option", { name: "Main Codex" }));
@@ -372,6 +375,70 @@ describe("RoutingConfigEditor", () => {
     expect(screen.getByRole("button", { name: "添加" })).toBeDisabled();
   });
 
+  test("shows the system root route capabilities instead of model counts", async () => {
+    await i18n.changeLanguage("zh-CN");
+
+    render(<Harness />);
+
+    expect(screen.queryByText("模型数")).not.toBeInTheDocument();
+    expect(screen.queryByText("可用能力")).not.toBeInTheDocument();
+    expect(screen.getByRole("row", { name: /系统默认/ })).toHaveTextContent("/");
+    expect(screen.queryByText("系统内置，只读")).not.toBeInTheDocument();
+    expect(screen.queryByText("models")).not.toBeInTheDocument();
+    expect(screen.queryByText("chat")).not.toBeInTheDocument();
+    expect(screen.queryByText("images")).not.toBeInTheDocument();
+  });
+
+  test("keeps the system root route in the table without a delete action", async () => {
+    await i18n.changeLanguage("zh-CN");
+
+    render(<Harness />);
+
+    const row = screen.getByRole("row", { name: /系统默认/ });
+    expect(row).toHaveTextContent("/");
+    expect(within(row).getByRole("button", { name: "编辑分组" })).toBeInTheDocument();
+    expect(within(row).queryByRole("button", { name: "删除分组" })).not.toBeInTheDocument();
+  });
+
+  test("updates model permissions for the system root route", async () => {
+    await i18n.changeLanguage("zh-CN");
+    const user = userEvent.setup();
+    const loadModelsForChannels = vi.fn(async (channels: string[], groupName?: string) =>
+      channels.length === 0 && groupName === "default"
+        ? ["gpt-root-allowed", "gpt-root-hidden"]
+        : [],
+    );
+
+    render(<Harness loadModelsForChannels={loadModelsForChannels} />);
+
+    const row = screen.getByRole("row", { name: /系统默认/ });
+    await user.click(within(row).getByRole("button", { name: "编辑分组" }));
+
+    expect(await screen.findByLabelText("gpt-root-allowed")).toBeChecked();
+    await user.click(screen.getByLabelText("gpt-root-hidden"));
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(loadModelsForChannels).toHaveBeenCalledWith([], "default");
+    expect(screen.getByTestId("allowed-models")).toHaveTextContent("gpt-root-allowed");
+  });
+
+  test("rejects the system root path for custom groups", async () => {
+    await i18n.changeLanguage("zh-CN");
+    const user = userEvent.setup();
+
+    render(<Harness />);
+
+    await user.click(screen.getByRole("button", { name: "新增分组" }));
+    await user.type(screen.getByPlaceholderText("pro"), "team-root");
+    await user.type(screen.getByPlaceholderText("/pro"), "/");
+    await user.click(screen.getByRole("combobox", { name: "选择渠道" }));
+    await user.click(screen.getByRole("option", { name: "Main Codex" }));
+    await user.click(screen.getByRole("combobox", { name: "选择渠道" }));
+
+    expect(screen.getByText("访问路径不能使用系统默认根路径 /。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "添加" })).toBeDisabled();
+  });
+
   test("rejects invalid paths that contain empty segments", async () => {
     await i18n.changeLanguage("zh-CN");
     const user = userEvent.setup();
@@ -380,7 +447,7 @@ describe("RoutingConfigEditor", () => {
 
     await user.click(screen.getByRole("button", { name: "新增分组" }));
     await user.type(screen.getByPlaceholderText("pro"), "team-invalid");
-    await user.type(screen.getByPlaceholderText("/pro"), "https://relay.07230805.xyz/openai//pro");
+    await user.type(screen.getByPlaceholderText("/pro"), "https://relay.example.test/openai//pro");
     await user.click(screen.getByRole("combobox", { name: "选择渠道" }));
     await user.click(screen.getByRole("option", { name: "Main Codex" }));
     await user.click(screen.getByRole("combobox", { name: "选择渠道" }));
@@ -441,7 +508,7 @@ describe("RoutingConfigEditor", () => {
     expect(screen.getByTestId("route-count")).toHaveTextContent("0");
   });
 
-  test("shows stale channel status and details for groups that reference deleted channels", async () => {
+  test("shows only invalid in the status column and opens a reason dialog for stale channels", async () => {
     await i18n.changeLanguage("zh-CN");
     const user = userEvent.setup();
 
@@ -476,19 +543,17 @@ describe("RoutingConfigEditor", () => {
     );
 
     expect(screen.getByText("异常")).toBeInTheDocument();
-    expect(screen.getByText("1 个已删除渠道")).toBeInTheDocument();
+    expect(screen.queryByText("1 个已删除渠道")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /异常/ }));
 
-    expect(screen.getByText("该分组包含已删除渠道")).toBeInTheDocument();
-    expect(screen.getAllByText("Legacy Claude").length).toBeGreaterThan(1);
-    expect(screen.getAllByText("已删除").length).toBeGreaterThan(0);
-    expect(toastMocks.warning).toHaveBeenCalledWith(
-      "分组存在失效渠道",
-      expect.objectContaining({
-        description: expect.stringContaining("Legacy Claude"),
-      }),
-    );
+    const dialog = screen.getByRole("dialog", { name: "分组异常原因" });
+    expect(within(dialog).getByText("该分组包含已删除渠道")).toBeInTheDocument();
+    expect(within(dialog).getByText("1 个已删除渠道")).toBeInTheDocument();
+    expect(within(dialog).getByText("Legacy Claude")).toBeInTheDocument();
+    expect(within(dialog).getByText("已删除")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "编辑分组" })).not.toBeInTheDocument();
+    expect(toastMocks.warning).not.toHaveBeenCalled();
   });
 
   test("shows disabled auth-file channels as disabled instead of deleted", async () => {
@@ -539,8 +604,12 @@ describe("RoutingConfigEditor", () => {
 
     await user.click(screen.getByRole("button", { name: /异常/ }));
 
-    expect(screen.getByText("1 个已删除渠道")).toBeInTheDocument();
-    expect(screen.getAllByText("GptPlus6").length).toBeGreaterThan(0);
+    const dialog = screen.getByRole("dialog", { name: "分组异常原因" });
+    expect(within(dialog).getByText("1 个已删除渠道")).toBeInTheDocument();
+    expect(within(dialog).getByText("GptPlus6")).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("button", { name: "查看并清理" }));
+
     expect(screen.getAllByText("GptPlus8").length).toBeGreaterThan(0);
     const disabledRow = screen.getByRole("row", { name: /GptPlus8/ });
     expect(within(disabledRow).getByText("已禁用")).toBeInTheDocument();

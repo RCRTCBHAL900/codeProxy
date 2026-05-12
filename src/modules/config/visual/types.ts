@@ -56,6 +56,7 @@ export type RoutingChannelGroupEntry = {
   strategy: RoutingStrategy;
   channels: RoutingChannelGroupMemberEntry[];
   allowedModels: string[];
+  system?: boolean;
 };
 
 export type RoutingPathRouteEntry = {

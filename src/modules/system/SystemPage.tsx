@@ -13,15 +13,16 @@ import {
   Search,
   Server,
   Layers,
+  CircleAlert,
 } from "lucide-react";
-import { apiClient } from "@/lib/http/client";
 import { useAuth } from "@/modules/auth/AuthProvider";
 import { Button } from "@/modules/ui/Button";
 import { Card } from "@/modules/ui/Card";
 import { TextInput } from "@/modules/ui/Input";
 import { useToast } from "@/modules/ui/ToastProvider";
 import { UpdateDetailsCard } from "@/modules/update/UpdateDetailsCard";
-import { loadConfiguredModelAvailability } from "@/modules/models/modelAvailability";
+import { loadModelPathAvailability } from "@/modules/models/modelAvailability";
+import { HoverTooltip } from "@/modules/ui/Tooltip";
 
 // Vendor SVG icons
 import iconClaude from "@/assets/icons/claude.svg";
@@ -43,30 +44,6 @@ import iconMimo from "@/assets/icons/mimo.svg";
 /* ═══════════════════════════════════════════════════════════
    Helpers
    ═══════════════════════════════════════════════════════════ */
-
-type V1ModelsResponse =
-  | { data?: Array<{ id?: string }> }
-  | { models?: Array<{ id?: string }> }
-  | Array<{ id?: string }>
-  | Record<string, unknown>;
-
-const extractModelIds = (payload: V1ModelsResponse): string[] => {
-  const data = Array.isArray(payload)
-    ? payload
-    : Array.isArray((payload as { data?: unknown }).data)
-      ? ((payload as { data: unknown[] }).data as Array<{ id?: string }>)
-      : Array.isArray((payload as { models?: unknown }).models)
-        ? ((payload as { models: unknown[] }).models as Array<{ id?: string }>)
-        : [];
-  return Array.from(
-    new Set(
-      data
-        .map((i) => (i && typeof i === "object" ? String((i as { id?: unknown }).id) : ""))
-        .map((s) => s.trim())
-        .filter(Boolean),
-    ),
-  ).sort((a, b) => a.localeCompare(b));
-};
 
 /** Vendor prefix → color scheme */
 const VENDOR_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -362,13 +339,15 @@ export function SystemPage({
     setModelsLoading(true);
     setModelsError(null);
     try {
-      const availability = await loadConfiguredModelAvailability();
-      if (availability.scoped) {
-        setModels(availability.items.map((item) => item.id));
-        return;
-      }
-      const payload = await apiClient.get<V1ModelsResponse>("/models");
-      setModels(extractModelIds(payload));
+      const availability = await loadModelPathAvailability();
+      const rootV1ModelIds = availability.items
+        .filter((item) =>
+          item.paths.some(
+            (path) => path.scope === "root" && path.method === "GET" && path.path === "/v1/models",
+          ),
+        )
+        .map((item) => item.id);
+      setModels(Array.from(new Set(rootV1ModelIds)).sort((a, b) => a.localeCompare(b)));
     } catch (err: unknown) {
       setModelsError(err instanceof Error ? err.message : t("system_page.load_failed"));
     } finally {
@@ -478,6 +457,11 @@ export function SystemPage({
             <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
               {t("system_page.available_models")}
             </h3>
+            <HoverTooltip content={t("system_page.available_models_tooltip")} placement="bottom">
+              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full text-amber-500 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-500/10">
+                <CircleAlert size={14} aria-hidden="true" />
+              </span>
+            </HoverTooltip>
             <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-bold tabular-nums text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300">
               {filteredModels.length}
             </span>

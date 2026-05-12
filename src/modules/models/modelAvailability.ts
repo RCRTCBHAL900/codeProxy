@@ -47,6 +47,44 @@ export interface ModelConfigMetadataItem {
   pricing: ModelPricing;
 }
 
+export interface ModelPathItem {
+  scope: string;
+  label: string;
+  method: string;
+  path: string;
+  family: string;
+}
+
+export interface ModelPathAvailabilityItem {
+  id: string;
+  owned_by?: string;
+  kind: string;
+  alias: boolean;
+  paths: ModelPathItem[];
+}
+
+export interface ModelPathRouteCapability {
+  label: string;
+  method: string;
+  path: string;
+  family: string;
+}
+
+export interface ModelPathRouteItem {
+  label: string;
+  path: string;
+  group?: string;
+  system: boolean;
+  readOnly: boolean;
+  capabilities: ModelPathRouteCapability[];
+}
+
+export interface ModelPathAvailability {
+  items: ModelPathAvailabilityItem[];
+  routes: ModelPathRouteItem[];
+  idSet: Set<string>;
+}
+
 type ModelDefinition = {
   id: string;
   display_name?: string;
@@ -128,6 +166,90 @@ export const normalizeModelConfigMetadataRows = (payload: unknown): ModelConfigM
     .map((item) => normalizeModelConfigMetadata(item))
     .filter((item): item is ModelConfigMetadataItem => Boolean(item))
     .sort((a, b) => a.id.localeCompare(b.id));
+};
+
+const normalizeModelPath = (item: unknown): ModelPathItem | null => {
+  if (!isRecord(item)) return null;
+  const method = String(item.method ?? "")
+    .trim()
+    .toUpperCase();
+  const path = String(item.path ?? "").trim();
+  if (!method || !path) return null;
+  return {
+    scope: String(item.scope ?? ""),
+    label: String(item.label ?? ""),
+    method,
+    path,
+    family: String(item.family ?? ""),
+  };
+};
+
+const normalizeModelPathCapability = (item: unknown): ModelPathRouteCapability | null => {
+  const normalized = normalizeModelPath(item);
+  if (!normalized) return null;
+  return {
+    label: normalized.label,
+    method: normalized.method,
+    path: normalized.path,
+    family: normalized.family,
+  };
+};
+
+const normalizeModelPathAvailabilityItem = (item: unknown): ModelPathAvailabilityItem | null => {
+  if (!isRecord(item)) return null;
+  const id = String(item.id ?? "").trim();
+  if (!id) return null;
+  const paths = Array.isArray(item.paths)
+    ? item.paths
+        .map((path) => normalizeModelPath(path))
+        .filter((path): path is ModelPathItem => Boolean(path))
+    : [];
+  return {
+    id,
+    owned_by: String(item.owned_by ?? ""),
+    kind: String(item.kind ?? "canonical"),
+    alias: item.alias === true,
+    paths,
+  };
+};
+
+const normalizeModelPathRouteItem = (route: unknown): ModelPathRouteItem | null => {
+  if (!isRecord(route)) return null;
+  const path = String(route.path ?? "").trim();
+  if (!path) return null;
+  const capabilities = Array.isArray(route.capabilities)
+    ? route.capabilities
+        .map((capability) => normalizeModelPathCapability(capability))
+        .filter((capability): capability is ModelPathRouteCapability => Boolean(capability))
+    : [];
+  return {
+    label: String(route.label ?? ""),
+    path,
+    group: String(route.group ?? ""),
+    system: route.system === true,
+    readOnly: route.read_only === true || route.readOnly === true,
+    capabilities,
+  };
+};
+
+export const normalizeModelPathAvailability = (payload: unknown): ModelPathAvailability => {
+  const record = isRecord(payload) ? payload : {};
+  const rawItems = Array.isArray(record.data) ? record.data : Array.isArray(payload) ? payload : [];
+  const items = rawItems
+    .map((item) => normalizeModelPathAvailabilityItem(item))
+    .filter((item): item is ModelPathAvailabilityItem => Boolean(item))
+    .sort((a, b) => a.id.localeCompare(b.id));
+
+  const rawRoutes = Array.isArray(record.routes) ? record.routes : [];
+  const routes = rawRoutes
+    .map((route) => normalizeModelPathRouteItem(route))
+    .filter((route): route is ModelPathRouteItem => Boolean(route));
+
+  return {
+    items,
+    routes,
+    idSet: new Set(items.map((item) => item.id.toLowerCase())),
+  };
 };
 
 const normalizeModelConfigRows = (payload: unknown): ModelAvailabilityItem[] =>
@@ -349,6 +471,9 @@ export const loadConfiguredModelAvailability = async (): Promise<ConfiguredModel
     idSet: new Set(items.map((item) => item.id.toLowerCase())),
   };
 };
+
+export const loadModelPathAvailability = async (): Promise<ModelPathAvailability> =>
+  normalizeModelPathAvailability(await apiClient.get("/model-path-availability"));
 
 export const filterByConfiguredModelAvailability = <T extends { id: string }>(
   models: T[],

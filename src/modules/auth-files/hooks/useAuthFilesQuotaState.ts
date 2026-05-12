@@ -34,17 +34,21 @@ import {
 interface UseAuthFilesQuotaStateOptions {
   tab: "files" | "excluded" | "alias";
   pageItems: AuthFileItem[];
+  visibleScopeKey: string;
   loading: boolean;
   setFiles: Dispatch<SetStateAction<AuthFileItem[]>>;
   setDetailFile: Dispatch<SetStateAction<AuthFileItem | null>>;
+  refreshUsageDataForFiles?: (files: AuthFileItem[]) => Promise<unknown>;
 }
 
 export function useAuthFilesQuotaState({
   tab,
   pageItems,
+  visibleScopeKey,
   loading,
   setFiles,
   setDetailFile,
+  refreshUsageDataForFiles,
 }: UseAuthFilesQuotaStateOptions) {
   const { t } = useTranslation();
   const initialDataCache = useMemo(() => readAuthFilesDataCache(), []);
@@ -59,7 +63,7 @@ export function useAuthFilesQuotaState({
   const quotaAutoRefreshingRef = useRef<Set<string>>(new Set());
   const quotaByFileNameRef = useRef<Record<string, QuotaState>>(quotaByFileName);
   const quotaWarmupAttemptRef = useRef<Map<string, number>>(new Map());
-  const visiblePageSignatureRef = useRef<string | null>(null);
+  const visibleScopeKeyRef = useRef<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   const [quotaPreviewMode, setQuotaPreviewMode] = useLocalStorage<QuotaPreviewMode>(
@@ -83,7 +87,7 @@ export function useAuthFilesQuotaState({
     () => {
       setNowMs(Date.now());
     },
-    tab === "files" ? Math.min(10_000, quotaAutoRefreshMs || 10_000) : null,
+    tab === "files" && quotaAutoRefreshMs > 0 ? Math.min(10_000, quotaAutoRefreshMs) : null,
   );
 
   useEffect(() => {
@@ -110,6 +114,14 @@ export function useAuthFilesQuotaState({
       setDetailFile((prev) => (prev?.name === name ? { ...prev, ...patch } : prev));
     },
     [setDetailFile, setFiles],
+  );
+
+  const refreshUsageDataAfterQuota = useCallback(
+    async (targetFiles: AuthFileItem[]) => {
+      if (!refreshUsageDataForFiles || targetFiles.length === 0) return;
+      await refreshUsageDataForFiles(targetFiles).catch(() => undefined);
+    },
+    [refreshUsageDataForFiles],
   );
 
   const resolveQuotaCardSlots = useCallback(
@@ -162,21 +174,32 @@ export function useAuthFilesQuotaState({
         .filter((item) => !parseAdditionalQuotaWindowLabel(String(item.label ?? "")))
         .map((item) => ({
           item,
-          key: normalize(String(item.label ?? "")),
+          key: normalize(`${String(item.key ?? "")} ${String(item.label ?? "")}`),
         }));
 
       const findExact = (label: string) => items.find((item) => item.label === label) ?? null;
+      const findKey = (...keys: string[]) =>
+        items.find((item) => {
+          const normalizedKey = normalize(String(item.key ?? ""));
+          return keys.some((key) => normalizedKey === normalize(key));
+        }) ?? null;
       const find = (re: RegExp) =>
         candidates.find((candidate) => re.test(candidate.key))?.item ?? null;
 
       const codeFiveHour =
-        findExact("m_quota.code_5h") ?? find(/(mquotacode5h|code5h|5h|5小时|fivehour|5hour)/i);
+        findKey("code_5h", "code5h") ??
+        findExact("m_quota.code_5h") ??
+        find(/(mquotacode5h|code5h|5h|5小时|fivehour|5hour)/i);
       const codeWeek =
-        findExact("m_quota.code_weekly") ?? find(/(mquotacodeweekly|codeweekly|weekly|week|周)/i);
+        findKey("code_week", "code_weekly", "codeweekly") ??
+        findExact("m_quota.code_weekly") ??
+        find(/(mquotacodeweekly|codeweekly|weekly|week|周)/i);
       const reviewFiveHour =
+        findKey("review_5h", "review5h") ??
         findExact("m_quota.review_5h") ??
         find(/(mquotareview5h|review5h|review5hour|reviewfivehour|审查5小时|审查：5小时)/i);
       const reviewWeek =
+        findKey("review_week", "review_weekly", "reviewweekly") ??
         findExact("m_quota.review_weekly") ??
         find(/(mquotareviewweekly|reviewweekly|reviewweek|review_week|审查周|审查：周)/i);
 
@@ -232,7 +255,11 @@ export function useAuthFilesQuotaState({
   );
 
   const refreshQuota = useCallback(
-    async (file: AuthFileItem, provider: QuotaProvider, options?: { showLoading?: boolean }) => {
+    async (
+      file: AuthFileItem,
+      provider: QuotaProvider,
+      options?: { showLoading?: boolean; refreshUsage?: boolean },
+    ) => {
       const name = file.name;
       if (quotaInFlightRef.current.has(name)) return;
       quotaInFlightRef.current.add(name);
@@ -308,6 +335,9 @@ export function useAuthFilesQuotaState({
             updatedAt: Date.now(),
           },
         }));
+        if (options?.refreshUsage !== false) {
+          await refreshUsageDataAfterQuota([file]);
+        }
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : t("auth_files.unknown_error");
         setQuotaByFileName((prev) => ({
@@ -324,7 +354,7 @@ export function useAuthFilesQuotaState({
         quotaInFlightRef.current.delete(name);
       }
     },
-    [patchAuthFileByName, resolveQuotaCardSlots, t],
+    [patchAuthFileByName, refreshUsageDataAfterQuota, resolveQuotaCardSlots, t],
   );
 
   const checkAuthFileConnectivity = useCallback(
@@ -439,6 +469,7 @@ export function useAuthFilesQuotaState({
             try {
               await refreshQuota(current.file, current.provider, {
                 showLoading: options?.showLoading,
+                refreshUsage: false,
               });
             } finally {
               if (markAsAutoRefreshing) {
@@ -450,26 +481,28 @@ export function useAuthFilesQuotaState({
       );
 
       await Promise.allSettled(workers);
+      await refreshUsageDataAfterQuota(targets.map((target) => target.file));
     },
-    [refreshQuota],
+    [refreshQuota, refreshUsageDataAfterQuota],
   );
 
   useEffect(() => {
     if (tab !== "files") return;
     if (loading) return;
 
-    const visibleSignature = pageItems.map((file) => file.name).join("\n");
-    const previousVisibleSignature = visiblePageSignatureRef.current;
-    visiblePageSignatureRef.current = visibleSignature;
+    const previousVisibleScopeKey = visibleScopeKeyRef.current;
+    visibleScopeKeyRef.current = visibleScopeKey;
 
-    const switchedVisiblePage =
-      previousVisibleSignature !== null && previousVisibleSignature !== visibleSignature;
-    const toFetch = switchedVisiblePage
+    const switchedVisibleScope =
+      previousVisibleScopeKey !== null && previousVisibleScopeKey !== visibleScopeKey;
+    if (!switchedVisibleScope && quotaAutoRefreshMs <= 0) return;
+
+    const toFetch = switchedVisibleScope
       ? resolveQuotaTargets(pageItems)
       : collectQuotaFetchTargets(pageItems);
     if (!toFetch.length) return;
 
-    if (switchedVisiblePage) {
+    if (switchedVisibleScope) {
       markQuotaTargetsLoading(toFetch);
     }
 
@@ -478,7 +511,7 @@ export function useAuthFilesQuotaState({
       if (!cancelled) {
         await runQuotaRefreshBatch(toFetch, {
           markAsAutoRefreshing: true,
-          showLoading: switchedVisiblePage,
+          showLoading: switchedVisibleScope,
         });
       }
     })();
@@ -491,9 +524,11 @@ export function useAuthFilesQuotaState({
     loading,
     markQuotaTargetsLoading,
     pageItems,
+    quotaAutoRefreshMs,
     resolveQuotaTargets,
     runQuotaRefreshBatch,
     tab,
+    visibleScopeKey,
   ]);
 
   const quotaLastUpdatedAtMs = useMemo(() => {

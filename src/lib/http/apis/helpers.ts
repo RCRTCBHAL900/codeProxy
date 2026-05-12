@@ -207,6 +207,7 @@ export const serializeBedrockKey = (config: BedrockProviderConfig) => {
 
 export const serializeOpenAIProvider = (provider: OpenAIProvider) => {
   const payload: Record<string, unknown> = { name: provider.name };
+  if (provider.disabled === true) payload.disabled = true;
   const baseUrl = normalizeString(provider.baseUrl);
   if (baseUrl) payload["base-url"] = baseUrl;
   const prefix = normalizeString(provider.prefix);

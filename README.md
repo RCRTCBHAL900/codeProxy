@@ -258,6 +258,10 @@ bun run build
 bun run preview
 ```
 
+### Quality Checks
+
+Pull requests to `dev` and `main` run lint, low-concurrency Vitest, build, and bundle diff in GitHub Actions. The frontend package manager is Bun (`packageManager: bun@1.2.2`); use `bun run ...` commands for local spot checks and leave full CI validation to GitHub Actions when local hardware is constrained.
+
 ## 📁 Project Structure
 
 ```

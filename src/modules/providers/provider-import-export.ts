@@ -250,6 +250,7 @@ const normalizeOpenAIItem = (
   return {
     item: {
       name,
+      ...(value.disabled === true ? { disabled: true } : {}),
       ...(normalizeString(value["base-url"] ?? value.baseUrl)
         ? { baseUrl: normalizeOpenAIBaseUrl(normalizeString(value["base-url"] ?? value.baseUrl)!) }
         : {}),

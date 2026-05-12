@@ -273,8 +273,7 @@ describe("Auth Files helper coverage", () => {
       name: "codex.json",
       restrictions: [
         {
-          scope: "model",
-          model: "gpt-5",
+          scope: "auth",
           http_status: 401,
           status_message: "unauthorized",
           next_retry_after: "2026-05-06T09:04:52.000Z",
@@ -284,9 +283,8 @@ describe("Auth Files helper coverage", () => {
 
     expect(resolveAuthFileRestrictionBadges(file, nowMs)).toEqual([
       {
-        key: "model:gpt-5:401:2026-05-06T09:04:52.000Z",
+        key: "auth::401:2026-05-06T09:04:52.000Z",
         label: "401 Error",
-        model: "gpt-5",
         reason: "unauthorized",
         recoverAtMs: Date.parse("2026-05-06T09:04:52.000Z"),
         remainingText: "1h 4m 52s",
@@ -295,7 +293,7 @@ describe("Auth Files helper coverage", () => {
     ]);
   });
 
-  test("keeps verbose transport errors out of restriction badge labels", () => {
+  test("ignores model-scoped transport errors as auth-file restriction badges", () => {
     const rawError =
       'Post "https://chatgpt.com/backend-api/codex/responses": read tcp [2607:8700:5500:8131::2]:44434->[2a06:98c1:310b::ac40:9bd1]:443: read: connection reset by peer';
     const file = {
@@ -310,11 +308,83 @@ describe("Auth Files helper coverage", () => {
       ],
     } as AuthFileItem;
 
-    expect(resolveAuthFileRestrictionBadges(file, Date.now())[0]).toMatchObject({
-      label: "Restricted",
-      model: "gpt-5.4",
-      reason: rawError,
-    });
+    expect(resolveAuthFileRestrictionBadges(file, Date.now())).toEqual([]);
+  });
+
+  test("ignores model-scoped 429 usage errors as auth-file restriction badges", () => {
+    const file = {
+      name: "codex.json",
+      restrictions: [
+        {
+          scope: "model",
+          model: "gpt-5.5",
+          http_status: 429,
+          status_message: "usage limit exceeded",
+          quota_exceeded: true,
+          next_retry_after: "2026-05-06T13:00:00.000Z",
+        },
+      ],
+    } as AuthFileItem;
+
+    expect(
+      resolveAuthFileRestrictionBadges(file, Date.parse("2026-05-06T08:00:00.000Z")),
+    ).toEqual([]);
+  });
+
+  test("shows auth-level quota recovery records as 429 restriction badges", () => {
+    const file = {
+      name: "codex.json",
+      restrictions: [
+        {
+          scope: "auth",
+          http_status: 429,
+          quota_exceeded: true,
+          reason: "quota",
+          quota_window: "5h",
+          quota_window_minutes: 300,
+          status: "error",
+          status_message: '{"error":{"type":"usage_limit_reached","message":"usage limit"}}',
+          unavailable: true,
+          next_retry_after: "2026-05-06T13:00:00.000Z",
+        },
+      ],
+    } as AuthFileItem;
+
+    expect(resolveAuthFileRestrictionBadges(file, Date.parse("2026-05-06T08:00:00.000Z"))).toEqual([
+      expect.objectContaining({
+        label: "429 Error",
+        quotaWindow: "5h",
+        quotaWindowMinutes: 300,
+        reason: "usage limit",
+        recoverAtMs: Date.parse("2026-05-06T13:00:00.000Z"),
+      }),
+    ]);
+  });
+
+  test("keeps weekly auth-level quota windows distinct from five-hour windows", () => {
+    const file = {
+      name: "codex.json",
+      restrictions: [
+        {
+          scope: "auth",
+          http_status: 429,
+          quota_exceeded: true,
+          reason: "quota",
+          quota_window: "week",
+          quota_window_minutes: 10080,
+          status_message: '{"error":{"type":"usage_limit_reached","message":"usage limit"}}',
+          next_retry_after: "2026-05-13T08:00:00.000Z",
+        },
+      ],
+    } as AuthFileItem;
+
+    expect(resolveAuthFileRestrictionBadges(file, Date.parse("2026-05-06T08:00:00.000Z"))).toEqual([
+      expect.objectContaining({
+        label: "429 Error",
+        quotaWindow: "week",
+        quotaWindowMinutes: 10080,
+      }),
+    ]);
   });
 
   test("does not derive restriction badges from normal auth status", () => {

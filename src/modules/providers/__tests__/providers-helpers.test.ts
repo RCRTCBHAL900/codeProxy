@@ -5,7 +5,10 @@ import {
   maskApiKey,
   normalizeDiscoveredModels,
 } from "@/modules/providers/providers-helpers";
-import { buildCandidateUsageSourceIds, normalizeUsageSourceId } from "@/modules/providers/provider-usage";
+import {
+  buildCandidateUsageSourceIds,
+  normalizeUsageSourceId,
+} from "@/modules/providers/provider-usage";
 
 describe("providers helpers", () => {
   test("masks api keys consistently for provider cards", () => {
@@ -48,6 +51,7 @@ describe("providers helpers", () => {
   test("builds openai draft and preserves api key entries for editing", () => {
     const draft = buildOpenAIDraft({
       name: "OpenAI Main",
+      disabled: true,
       baseUrl: "https://example.com/v1",
       prefix: "oa",
       priority: 5,
@@ -65,6 +69,7 @@ describe("providers helpers", () => {
     });
 
     expect(draft.name).toBe("OpenAI Main");
+    expect(draft.disabled).toBe(true);
     expect(draft.baseUrl).toBe("https://example.com/v1");
     expect(draft.priorityText).toBe("5");
     expect(draft.headersEntries).toEqual([
@@ -93,10 +98,7 @@ describe("providers helpers", () => {
           null,
         ],
       }),
-    ).toEqual([
-      { id: "gpt-4.1", owned_by: "openai" },
-      { id: "gpt-4o-mini" },
-    ]);
+    ).toEqual([{ id: "gpt-4.1", owned_by: "openai" }, { id: "gpt-4o-mini" }]);
   });
 
   test("normalizes usage sources and matches raw plus masked api key candidates", () => {

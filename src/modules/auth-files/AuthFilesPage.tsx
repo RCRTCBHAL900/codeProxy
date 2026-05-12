@@ -106,8 +106,18 @@ export function AuthFilesPage() {
     applyImport,
   } = useAuthFilesOAuthConfig(tab);
 
-  const { files, setFiles, loading, refreshingAll, usageLoading, usageData, usageIndex, loadAll } =
-    useAuthFilesDataState();
+  const {
+    files,
+    setFiles,
+    loading,
+    refreshingAll,
+    usageLoading,
+    usageData,
+    usageIndex,
+    loadAll,
+    refreshFilesForItems,
+    refreshUsageDataForFiles,
+  } = useAuthFilesDataState();
 
   const [confirm, setConfirm] = useState<null | { type: "deleteSelection"; names: string[] }>(null);
 
@@ -124,6 +134,7 @@ export function AuthFilesPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const filesRef = useRef<AuthFileItem[]>(files);
   const oauthBaselineSignatureRef = useRef("");
+  const previousTabRef = useRef<"files" | "excluded" | "alias" | null>(null);
 
   useEffect(() => {
     filesRef.current = files;
@@ -247,6 +258,16 @@ export function AuthFilesPage() {
     void loadModelOwnerGroups();
   }, [loadModelOwnerGroups, tab]);
 
+  const updateFilter = useCallback((value: string) => {
+    setFilter(value);
+    setPage(1);
+  }, []);
+
+  const updateSearch = useCallback((value: string) => {
+    setSearch(value);
+    setPage(1);
+  }, []);
+
   const {
     providerOptions,
     filterCounts,
@@ -287,16 +308,17 @@ export function AuthFilesPage() {
     resolveQuotaCardSlots,
     refreshQuota,
     checkAuthFileConnectivity,
-    collectQuotaFetchTargets,
     forceRefreshPage,
     runQuotaRefreshBatch,
     quotaLastUpdatedText,
   } = useAuthFilesQuotaState({
     tab,
     pageItems,
+    visibleScopeKey: `${filter}\n${search}`,
     loading,
     setFiles,
     setDetailFile,
+    refreshUsageDataForFiles,
   });
 
   const openDetailWithQuotaRefresh = useCallback(
@@ -314,10 +336,22 @@ export function AuthFilesPage() {
   );
 
   const refreshFilesAndQuota = useCallback(async () => {
+    const currentPageItems = pageItems;
     const quotaRefreshPromise = forceRefreshPage();
-    const filesRefreshPromise = loadAll();
+    const filesRefreshPromise = refreshFilesForItems(currentPageItems);
     await Promise.all([filesRefreshPromise, quotaRefreshPromise]);
-  }, [forceRefreshPage, loadAll]);
+  }, [forceRefreshPage, pageItems, refreshFilesForItems]);
+
+  useEffect(() => {
+    const previousTab = previousTabRef.current;
+    previousTabRef.current = tab;
+    if (previousTab === null || previousTab === tab || tab !== "files") return;
+
+    void (async () => {
+      await loadAll();
+      await forceRefreshPage();
+    })();
+  }, [forceRefreshPage, loadAll, tab]);
 
   const {
     groupOverviewOpen,
@@ -342,7 +376,6 @@ export function AuthFilesPage() {
     quotaByFileName,
     usageIndex,
     tab,
-    collectQuotaFetchTargets,
     runQuotaRefreshBatch,
     resolveQuotaProvider,
     resolveQuotaCardSlots,
@@ -411,14 +444,14 @@ export function AuthFilesPage() {
             handleUpload={handleUpload}
             filterChips={filterChips}
             filter={filter}
-            setFilter={setFilter}
+            setFilter={updateFilter}
             filterCounts={filterCounts}
             modelOwnerGroupsLoading={modelOwnerGroupsLoading}
             modelOwnerGroups={modelOwnerGroups}
             selectedModelOwner={selectedModelOwner}
             setSelectedModelOwner={(owner) => setModelOwnerForAuthGroup(filter, owner)}
             search={search}
-            setSearch={setSearch}
+            setSearch={updateSearch}
             quotaLastUpdatedText={quotaLastUpdatedText}
             loading={loading}
             filesLength={files.length}

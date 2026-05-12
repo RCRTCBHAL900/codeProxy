@@ -143,6 +143,13 @@ describe("ModelsPage", () => {
     expect(screen.queryByText("seed-only-model")).not.toBeInTheDocument();
   });
 
+  test("does not render the model request paths column", async () => {
+    renderPage();
+
+    expect(await screen.findByText("gpt-image-2")).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Paths" })).not.toBeInTheDocument();
+  });
+
   test("renders active models as an availability list without deletion selection controls", async () => {
     renderPage();
 

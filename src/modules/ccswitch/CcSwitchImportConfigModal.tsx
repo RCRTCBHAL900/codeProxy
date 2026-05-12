@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { LoaderCircle } from "lucide-react";
 import iconClaude from "@/assets/icons/claude.svg";
 import iconCodex from "@/assets/icons/codex.svg";
 import iconGemini from "@/assets/icons/gemini.svg";
@@ -56,6 +57,7 @@ const controlClassName =
 const fieldClassName = "flex flex-col gap-1.5";
 
 const CLAUDE_ROLE_ORDER: CcSwitchClaudeModelRole[] = ["main", "haiku", "sonnet", "opus"];
+const MODEL_MAPPING_LOADING_ROWS = ["short", "medium", "long"];
 
 const rolePriority: Record<CcSwitchClaudeModelRole, string[]> = {
   main: ["sonnet", "opus", "haiku", "claude"],
@@ -284,6 +286,7 @@ export function CcSwitchImportConfigModal({
   const selectedGroup = draft.allowedChannelGroups[0] ?? "";
   const selectedGroupOption = channelGroupOptions.find((option) => option.value === selectedGroup);
   const selectedGroupAllowedModelsKey = (selectedGroupOption?.allowedModels ?? []).join("\n");
+  const selectedGroupChannelsKey = (selectedGroupOption?.channels ?? []).join("\n");
   const selectedGroupAuthoritativeOwnerKey = (
     selectedGroupOption?.authoritativeModelOwnerKeys ?? []
   ).join("\n");
@@ -309,32 +312,6 @@ export function CcSwitchImportConfigModal({
         .map(normalizeModelOwnerKey)
         .filter(Boolean),
     );
-    if (authoritativeModelOwnerKeys.size > 0) {
-      setModelsLoading(true);
-      modelsApi
-        .getModelConfigs("active")
-        .then((modelConfigs) => {
-          if (cancelled) return;
-          const modelIds = modelConfigs
-            .filter(
-              (model) =>
-                authoritativeModelOwnerKeys.has(normalizeModelOwnerKey(model.owned_by)) ||
-                authoritativeModelOwnerKeys.has(normalizeModelOwnerKey(model.source)),
-            )
-            .map((model) => model.id);
-          setAvailableModels(dedupeModels(modelIds));
-        })
-        .catch(() => {
-          if (!cancelled) setAvailableModels([]);
-        })
-        .finally(() => {
-          if (!cancelled) setModelsLoading(false);
-        });
-      return () => {
-        cancelled = true;
-      };
-    }
-
     const lookupChannels = dedupeModels(selectedGroupOption?.channels ?? []);
     const modelOwnerKeys = new Set(
       (selectedGroupOption?.modelOwnerKeys ?? []).map(normalizeModelOwnerKey).filter(Boolean),
@@ -352,26 +329,46 @@ export function CcSwitchImportConfigModal({
         const availability = await loadConfiguredModelAvailability();
         if (cancelled) return;
         let visibleModels = filterByConfiguredModelAvailability(models, availability);
-        if (modelOwnerKeys.size > 0) {
+        const optionMap = new Map<string, string>();
+        const addModelId = (id: string) => {
+          const normalized = String(id ?? "").trim();
+          if (!normalized) return;
+          const key = normalized.toLowerCase();
+          if (!optionMap.has(key)) optionMap.set(key, normalized);
+        };
+        const needsModelConfigs = authoritativeModelOwnerKeys.size > 0 || modelOwnerKeys.size > 0;
+        if (needsModelConfigs) {
           const modelConfigs = await modelsApi.getModelConfigs("active").catch(() => []);
           if (cancelled) return;
-          const allowedModelIds = new Set(
-            modelConfigs
-              .filter(
-                (model) =>
-                  modelOwnerKeys.has(normalizeModelOwnerKey(model.owned_by)) ||
-                  modelOwnerKeys.has(normalizeModelOwnerKey(model.source)),
-              )
-              .map((model) => model.id.toLowerCase()),
-          );
-          if (allowedModelIds.size > 0) {
-            visibleModels = visibleModels.filter((model) =>
-              allowedModelIds.has(model.id.toLowerCase()),
+          if (modelOwnerKeys.size > 0 && authoritativeModelOwnerKeys.size === 0) {
+            const allowedModelIds = new Set(
+              modelConfigs
+                .filter(
+                  (model) =>
+                    modelOwnerKeys.has(normalizeModelOwnerKey(model.owned_by)) ||
+                    modelOwnerKeys.has(normalizeModelOwnerKey(model.source)),
+                )
+                .map((model) => model.id.toLowerCase()),
             );
+            if (allowedModelIds.size > 0) {
+              visibleModels = visibleModels.filter((model) =>
+                allowedModelIds.has(model.id.toLowerCase()),
+              );
+            }
+          }
+          if (authoritativeModelOwnerKeys.size > 0) {
+            for (const model of modelConfigs) {
+              if (
+                authoritativeModelOwnerKeys.has(normalizeModelOwnerKey(model.owned_by)) ||
+                authoritativeModelOwnerKeys.has(normalizeModelOwnerKey(model.source))
+              ) {
+                addModelId(model.id);
+              }
+            }
           }
         }
-        const modelIds = visibleModels.map((model) => model.id);
-        setAvailableModels(dedupeModels(modelIds));
+        for (const model of visibleModels) addModelId(model.id);
+        setAvailableModels(dedupeModels(Array.from(optionMap.values())));
       })
       .catch(() => {
         if (!cancelled) setAvailableModels([]);
@@ -387,6 +384,7 @@ export function CcSwitchImportConfigModal({
     open,
     selectedGroup,
     selectedGroupAllowedModelsKey,
+    selectedGroupChannelsKey,
     selectedGroupAuthoritativeOwnerKey,
     selectedGroupOwnerKey,
   ]);
@@ -460,11 +458,13 @@ export function CcSwitchImportConfigModal({
   );
   const currentModelOptions = useMemo(() => modelOptions(availableModels), [availableModels]);
   const preparedDraft = prepareDraftForSave(draft);
+  const modelMappingsLoading = Boolean(selectedGroup && modelsLoading);
   const isSaveDisabled =
     !preparedDraft.providerName.trim() ||
     !selectedGroup ||
     !preparedDraft.defaultModel.trim() ||
-    preparedDraft.modelMappings.length === 0;
+    preparedDraft.modelMappings.length === 0 ||
+    modelMappingsLoading;
 
   const setClientType = (clientType: CcSwitchClientType) => {
     const defaults = DEFAULT_CC_SWITCH_IMPORT_SETTINGS[clientType];
@@ -702,14 +702,51 @@ export function CcSwitchImportConfigModal({
                   : t("ccswitch.config_model_mapping_hint")}
               </p>
             </div>
-            {modelsLoading ? (
-              <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-500 dark:bg-neutral-900 dark:text-white/55">
+            {modelMappingsLoading ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-500 dark:bg-neutral-900 dark:text-white/55">
+                <LoaderCircle size={12} className="animate-spin" />
                 {t("ccswitch.import_model_loading")}
               </span>
             ) : null}
           </div>
 
-          {draft.modelMappings.length === 0 ? (
+          {modelMappingsLoading ? (
+            <div
+              role="status"
+              aria-label={t("ccswitch.config_model_mapping_loading")}
+              data-testid="ccswitch-model-mapping-loading"
+              className="px-4 py-5"
+            >
+              <div className="flex items-center gap-3 rounded-2xl border border-slate-200/75 bg-slate-50/85 px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900/55">
+                <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-slate-200/80 dark:bg-neutral-950 dark:text-white/60 dark:ring-neutral-800">
+                  <LoaderCircle size={17} className="animate-spin" />
+                </span>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-slate-800 dark:text-white/85">
+                    {t("ccswitch.config_model_mapping_loading")}
+                  </div>
+                  <p className="mt-0.5 text-xs text-slate-500 dark:text-white/50">
+                    {t("ccswitch.config_model_mapping_loading_hint")}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 space-y-2" aria-hidden="true">
+                {MODEL_MAPPING_LOADING_ROWS.map((row) => (
+                  <div
+                    key={row}
+                    className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)] gap-3 rounded-xl border border-slate-200/70 bg-white px-3 py-3 dark:border-neutral-800 dark:bg-neutral-950/70"
+                  >
+                    <span className="h-3 rounded-full bg-slate-200/80 dark:bg-white/10" />
+                    <span
+                      className={`h-3 rounded-full bg-slate-200/80 dark:bg-white/10 ${
+                        row === "short" ? "w-1/2" : row === "medium" ? "w-2/3" : "w-5/6"
+                      }`}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : draft.modelMappings.length === 0 ? (
             <div className="px-4 py-8 text-center text-sm text-slate-500 dark:text-white/50">
               {selectedGroup
                 ? t("ccswitch.config_model_mapping_empty")

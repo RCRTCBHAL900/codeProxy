@@ -186,6 +186,7 @@ export const buildProviderKeyDraft = (
 
 export type OpenAIDraft = {
   name: string;
+  disabled: boolean;
   baseUrl: string;
   prefix: string;
   headersEntries: KeyValueEntry[];
@@ -204,6 +205,7 @@ export type OpenAIDraft = {
 
 export const buildOpenAIDraft = (input?: OpenAIProvider | null): OpenAIDraft => ({
   name: input?.name ?? "",
+  disabled: input?.disabled === true,
   baseUrl: input?.baseUrl ?? "",
   prefix: input?.prefix ?? "",
   headersEntries: recordToKeyValueEntries(input?.headers),
