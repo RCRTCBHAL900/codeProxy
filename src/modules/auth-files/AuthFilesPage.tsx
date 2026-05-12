@@ -314,7 +314,7 @@ export function AuthFilesPage() {
   } = useAuthFilesQuotaState({
     tab,
     pageItems,
-    visibleScopeKey: `${filter}\n${search}\n${safePage}`,
+    visibleScopeKey: `${filter}\n${search}`,
     loading,
     setFiles,
     setDetailFile,

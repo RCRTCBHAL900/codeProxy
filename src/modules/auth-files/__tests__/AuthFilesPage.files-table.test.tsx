@@ -171,6 +171,7 @@ describe("AuthFilesPage files table", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
     window.localStorage.clear();
     window.sessionStorage.clear();
   });
@@ -244,7 +245,7 @@ describe("AuthFilesPage files table", () => {
     });
   });
 
-  test("shows active restriction badge with reason and recovery tooltip", async () => {
+  test("shows active auth-level restriction badge with reason and recovery tooltip", async () => {
     const now = Date.now();
     mocks.list.mockImplementationOnce(async () => ({
       files: [
@@ -256,8 +257,7 @@ describe("AuthFilesPage files table", () => {
           disabled: false,
           restrictions: [
             {
-              scope: "model",
-              model: "gpt-5",
+              scope: "auth",
               http_status: 401,
               status_message: "unauthorized",
               next_retry_after: new Date(now + 34 * 60_000 + 50_000).toISOString(),
@@ -284,12 +284,11 @@ describe("AuthFilesPage files table", () => {
     fireEvent.mouseEnter(tooltipTrigger);
 
     const tooltip = await screen.findByRole("tooltip");
-    expect(tooltip).toHaveTextContent("gpt-5");
     expect(tooltip).toHaveTextContent("unauthorized");
     expect(tooltip).toHaveTextContent("Auto recovery in");
   });
 
-  test("keeps verbose restriction errors out of table badges and opens one tooltip", async () => {
+  test("hides model-scoped transport errors from table restriction badges", async () => {
     vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(80);
     vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(640);
 
@@ -334,19 +333,13 @@ describe("AuthFilesPage files table", () => {
     const title = await screen.findByText("A_GptPro");
     const row = title.closest("tr");
     expect(row).not.toBeNull();
-    expect(within(row as HTMLElement).getByText("Restricted")).toBeInTheDocument();
+    expect(within(row as HTMLElement).queryByText("Restricted")).not.toBeInTheDocument();
+    expect(within(row as HTMLElement).queryByText("500 Error")).not.toBeInTheDocument();
+    expect(within(row as HTMLElement).queryByText("429 Error")).not.toBeInTheDocument();
     expect(within(row as HTMLElement).queryByText(rawError)).not.toBeInTheDocument();
-
-    fireEvent.mouseEnter(within(row as HTMLElement).getByText("Restricted"));
-
-    const tooltips = await screen.findAllByRole("tooltip");
-    expect(tooltips).toHaveLength(1);
-    expect(tooltips[0]).toHaveTextContent("gpt-5.4");
-    expect(tooltips[0]).toHaveTextContent(rawError);
-    expect(tooltips[0]).not.toHaveTextContent("A_GptPro");
   });
 
-  test("cards view keeps verbose restriction errors out of badge rows", async () => {
+  test("cards view hides model-scoped transient errors from badge rows", async () => {
     const now = Date.now();
     const rawError = "context canceled";
     window.localStorage.setItem("authFilesPage.filesViewMode.v1", JSON.stringify("cards"));
@@ -388,7 +381,9 @@ describe("AuthFilesPage files table", () => {
     const title = await screen.findByText("A_GptPro");
     const card = title.closest("section");
     expect(card).not.toBeNull();
-    expect(within(card as HTMLElement).getByText("Restricted")).toBeInTheDocument();
+    expect(within(card as HTMLElement).queryByText("Restricted")).not.toBeInTheDocument();
+    expect(within(card as HTMLElement).queryByText("500 Error")).not.toBeInTheDocument();
+    expect(within(card as HTMLElement).queryByText("429 Error")).not.toBeInTheDocument();
     expect(within(card as HTMLElement).queryByText(rawError)).not.toBeInTheDocument();
   });
 
@@ -741,6 +736,91 @@ describe("AuthFilesPage files table", () => {
     await waitFor(() => expect(mocks.fetchQuota).toHaveBeenCalledTimes(9));
     expect(mocks.fetchQuota.mock.calls.map(([, file]) => (file as { name: string }).name)).toEqual(
       codexFiles.slice(0, 9).map((file) => file.name),
+    );
+  });
+
+  test("switching provider after entering from request logs refreshes visible cards with auto-refresh off", async () => {
+    const now = Date.now();
+    const qwenFiles = Array.from({ length: 2 }, (_, index) => ({
+      name: `qwen-${index + 1}.json`,
+      type: "qwen",
+      size: 1024,
+      modified: now,
+      disabled: false,
+      auth_index: `qwen-${index + 1}`,
+    }));
+    const codexFiles = Array.from({ length: 2 }, (_, index) => ({
+      name: `codex-${index + 1}.json`,
+      type: "codex",
+      size: 1024,
+      modified: now,
+      disabled: false,
+      auth_index: `codex-${index + 1}`,
+    }));
+    const files = [...qwenFiles, ...codexFiles] as any[];
+
+    mocks.list.mockImplementation(async () => ({ files }));
+    mocks.fetchQuota.mockResolvedValue({
+      items: [{ label: "m_quota.code_5h", percent: 66, resetAtMs: now + 60_000 }],
+    });
+
+    window.localStorage.setItem("authFilesPage.filesViewMode.v1", JSON.stringify("cards"));
+    window.localStorage.setItem("authFilesPage.quotaAutoRefreshMs.v1", JSON.stringify(0));
+    window.sessionStorage.setItem(
+      AUTH_FILES_UI_STATE_KEY,
+      JSON.stringify({ tab: "files", filter: "qwen", search: "", page: 1 }),
+    );
+    window.sessionStorage.setItem(
+      AUTH_FILES_DATA_CACHE_KEY,
+      JSON.stringify({
+        savedAtMs: now,
+        files,
+        usageData: { source: [], auth_index: [] },
+        quotaByFileName: Object.fromEntries(
+          qwenFiles.map((file) => [
+            file.name,
+            {
+              status: "success",
+              updatedAt: now,
+              items: [{ label: "m_quota.code_5h", percent: 22, resetAtMs: now + 60_000 }],
+            },
+          ]),
+        ),
+      }),
+    );
+
+    const router = createMemoryRouter(
+      [
+        { path: "/monitor/request-logs", element: <div>request logs</div> },
+        {
+          path: "/auth-files",
+          element: (
+            <ThemeProvider>
+              <ToastProvider>
+                <AuthFilesPage />
+              </ToastProvider>
+            </ThemeProvider>
+          ),
+        },
+      ],
+      { initialEntries: ["/monitor/request-logs"] },
+    );
+
+    render(<RouterProvider router={router} />);
+
+    expect(await screen.findByText("request logs")).toBeInTheDocument();
+    await act(async () => {
+      await router.navigate("/auth-files");
+    });
+
+    expect(await screen.findByText("qwen-1.json")).toBeInTheDocument();
+    mocks.fetchQuota.mockClear();
+
+    fireEvent.click(screen.getByRole("tab", { name: /^codex/i }));
+
+    await waitFor(() => expect(mocks.fetchQuota).toHaveBeenCalledTimes(2));
+    expect(mocks.fetchQuota.mock.calls.map(([, file]) => (file as { name: string }).name)).toEqual(
+      codexFiles.map((file) => file.name),
     );
   });
 
@@ -1350,6 +1430,123 @@ describe("AuthFilesPage files table", () => {
     const quotaLabel = screen.getByText("Code: 5h");
     fireEvent.mouseEnter(quotaLabel);
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  });
+
+  test("cards view does not schedule quota countdown ticks when auto-refresh is off", async () => {
+    const now = Date.parse("2026-05-12T08:00:00.000Z");
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    const intervalSpy = vi.spyOn(window, "setInterval");
+    const file = {
+      name: "codex.json",
+      type: "codex",
+      size: 1024,
+      modified: now,
+      disabled: false,
+      auth_index: "1",
+    } as any;
+
+    mocks.list.mockImplementation(async () => ({ files: [file] }));
+
+    window.localStorage.setItem("authFilesPage.filesViewMode.v1", JSON.stringify("cards"));
+    window.localStorage.setItem("authFilesPage.quotaAutoRefreshMs.v1", JSON.stringify(0));
+    window.sessionStorage.setItem(
+      AUTH_FILES_DATA_CACHE_KEY,
+      JSON.stringify({
+        savedAtMs: now,
+        files: [file],
+        usageData: { source: [], auth_index: [] },
+        quotaByFileName: {
+          "codex.json": {
+            status: "success",
+            updatedAt: now,
+            items: [{ label: "m_quota.code_5h", percent: 22, resetAtMs: now + 10_000 }],
+          },
+        },
+      }),
+    );
+
+    render(
+      <MemoryRouter initialEntries={["/auth-files"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/auth-files" element={<AuthFilesPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    const cards = await screen.findByTestId("auth-files-cards");
+    expect(within(cards).getByText("10秒")).toBeInTheDocument();
+    expect(intervalSpy.mock.calls.some(([, delay]) => delay === 10_000)).toBe(false);
+  });
+
+  test("cards view keeps weekly quota reset separate from five-hour reset and hides file modified time", async () => {
+    const now = Date.parse("2026-05-12T08:00:00.000Z");
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    const file = {
+      name: "codex.json",
+      type: "codex",
+      size: 1024,
+      modified: now,
+      disabled: false,
+      auth_index: "1",
+    } as any;
+    const modifiedText = new Date(now).toLocaleString();
+
+    mocks.list.mockImplementation(async () => ({ files: [file] }));
+
+    window.localStorage.setItem("authFilesPage.filesViewMode.v1", JSON.stringify("cards"));
+    window.localStorage.setItem("authFilesPage.quotaAutoRefreshMs.v1", JSON.stringify(0));
+    window.sessionStorage.setItem(
+      AUTH_FILES_DATA_CACHE_KEY,
+      JSON.stringify({
+        savedAtMs: now,
+        files: [file],
+        usageData: { source: [], auth_index: [] },
+        quotaByFileName: {
+          "codex.json": {
+            status: "success",
+            updatedAt: now,
+            items: [
+              {
+                key: "code_5h",
+                label: "m_quota.code_5h",
+                percent: 100,
+                resetAtMs: now + 5 * 60 * 60 * 1000,
+              },
+              {
+                key: "code_week",
+                label: "m_quota.code_weekly",
+                percent: 0,
+                resetAtMs: now + 6 * 24 * 60 * 60 * 1000,
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    render(
+      <MemoryRouter initialEntries={["/auth-files"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/auth-files" element={<AuthFilesPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    const title = await screen.findByText("codex.json");
+    const card = title.closest("section");
+    expect(card).not.toBeNull();
+
+    expect(within(card as HTMLElement).getByText("5小时0秒")).toBeInTheDocument();
+    expect(within(card as HTMLElement).getByText("6天0秒")).toBeInTheDocument();
+    expect(within(card as HTMLElement).queryByText(modifiedText)).not.toBeInTheDocument();
   });
 
   test("cards view shows all antigravity quota items instead of truncating to three", async () => {

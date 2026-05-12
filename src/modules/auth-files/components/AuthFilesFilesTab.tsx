@@ -33,7 +33,6 @@ import type {
 } from "@/modules/auth-files/helpers/authFilesPageUtils";
 import {
   TYPE_BADGE_CLASSES,
-  formatModified,
   isRuntimeOnlyAuthFile,
   normalizeProviderKey,
   resolveAuthFileDisplayName,
@@ -652,9 +651,6 @@ export function AuthFilesFilesTab({
                             ))}
                           </div>
                         ) : null}
-                        <p className="truncate text-[11px] text-slate-500 dark:text-white/45">
-                          {formatModified(file)}
-                        </p>
                       </div>
 
                       <div
