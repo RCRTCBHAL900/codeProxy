@@ -37,6 +37,7 @@ describe("provider proxy id serialization", () => {
     expect(
       serializeOpenAIProvider({
         name: "OpenAI",
+        disabled: true,
         baseUrl: "https://api.example.com/v1",
         apiKeyEntries: [
           {
@@ -49,6 +50,7 @@ describe("provider proxy id serialization", () => {
       }),
     ).toEqual(
       expect.objectContaining({
+        disabled: true,
         "api-key-entries": [
           expect.objectContaining({
             disabled: true,

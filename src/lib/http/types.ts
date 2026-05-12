@@ -182,6 +182,7 @@ export interface ProviderApiKeyEntry {
 
 export interface OpenAIProvider {
   name: string;
+  disabled?: boolean;
   baseUrl?: string;
   prefix?: string;
   headers?: Record<string, string>;

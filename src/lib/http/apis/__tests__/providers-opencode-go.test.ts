@@ -168,6 +168,7 @@ describe("providersApi OpenCode Go", () => {
           "openai-compatibility": [
             {
               name: "OpenAI compatible API",
+              disabled: true,
               "base-url": "https://example.com/v1",
               "api-key-entries": [{ "api-key": "sk-openai" }],
             },
@@ -196,6 +197,7 @@ describe("providersApi OpenCode Go", () => {
     await expect(providersApi.getOpenAIProviders()).resolves.toEqual([
       {
         name: "OpenAI compatible API",
+        disabled: true,
         baseUrl: "https://example.com/v1",
         apiKeyEntries: [{ apiKey: "sk-openai" }],
       },

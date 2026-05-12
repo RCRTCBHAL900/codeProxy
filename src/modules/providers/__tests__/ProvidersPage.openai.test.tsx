@@ -220,8 +220,12 @@ describe("ProvidersPage openai tab", () => {
     );
 
     expect(await screen.findByText("OpenAI Main")).toBeInTheDocument();
-    const enabledSwitch = (await screen.findAllByRole("switch", { name: /Enable key entry 1/i }))[0];
-    const disabledSwitch = (await screen.findAllByRole("switch", { name: /Enable key entry 2/i }))[0];
+    const enabledSwitch = (
+      await screen.findAllByRole("switch", { name: /Enable key entry 1/i })
+    )[0];
+    const disabledSwitch = (
+      await screen.findAllByRole("switch", { name: /Enable key entry 2/i })
+    )[0];
     expect(enabledSwitch).toHaveAttribute("aria-checked", "true");
     expect(disabledSwitch).toHaveAttribute("aria-checked", "false");
 
@@ -235,6 +239,58 @@ describe("ProvidersPage openai tab", () => {
             expect.objectContaining({
               apiKey: "sk-openai-enabled-1234567890",
               disabled: true,
+            }),
+            expect.objectContaining({
+              apiKey: "sk-openai-disabled-1234567890",
+              disabled: true,
+            }),
+          ],
+        }),
+      ]);
+    });
+  });
+
+  test("toggles an OpenAI Compatible provider without removing keys", async () => {
+    const user = userEvent.setup();
+    const provider = {
+      name: "OpenAI Main",
+      baseUrl: "https://example.com/v1",
+      apiKeyEntries: [
+        { apiKey: "sk-openai-enabled-1234567890" },
+        { apiKey: "sk-openai-disabled-1234567890", disabled: true },
+      ],
+      models: [{ name: "gpt-4.1" }],
+    } as any;
+    mocks.getOpenAIProviders.mockImplementation(async () => [provider] as any);
+
+    render(
+      <MemoryRouter initialEntries={["/ai-providers/openai"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/ai-providers/*" element={<ProvidersPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("OpenAI Main")).toBeInTheDocument();
+    const providerSwitch = await screen.findByRole("switch", {
+      name: /Enable provider OpenAI Main/i,
+    });
+    expect(providerSwitch).toHaveAttribute("aria-checked", "true");
+
+    await user.click(providerSwitch);
+
+    await waitFor(() => {
+      expect(mocks.saveOpenAIProviders).toHaveBeenCalledWith([
+        expect.objectContaining({
+          name: "OpenAI Main",
+          disabled: true,
+          apiKeyEntries: [
+            expect.objectContaining({
+              apiKey: "sk-openai-enabled-1234567890",
             }),
             expect.objectContaining({
               apiKey: "sk-openai-disabled-1234567890",

@@ -2441,6 +2441,7 @@
     "priority_label": "优先级（可选）",
     "test_model_label": "测试模型（可选）",
     "api_key_entries": "API 密钥条目",
+    "enable_provider": "启用提供商",
     "enable_key_entry": "启用密钥条目",
     "key_number": "密钥 #{{num}}",
     "proxy_url_optional": "代理 URL（可选）",

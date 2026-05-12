@@ -311,6 +311,7 @@ export const providersApi = {
         if (isOauthBackedProviderRow(item)) return null;
         const name = normalizeString(item.name) ?? "";
         if (!name) return null;
+        const disabled = item.disabled === true;
         const baseUrl = normalizeString(item["base-url"] ?? item.baseUrl) ?? undefined;
         const prefix = normalizeString(item.prefix) ?? undefined;
         const headers = normalizeHeaders(item.headers);
@@ -322,6 +323,7 @@ export const providersApi = {
         const testModel = normalizeString(item["test-model"] ?? item.testModel) ?? undefined;
         return {
           name,
+          ...(disabled ? { disabled } : {}),
           ...(baseUrl ? { baseUrl } : {}),
           ...(prefix ? { prefix } : {}),
           ...(headers ? { headers } : {}),

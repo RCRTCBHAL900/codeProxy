@@ -76,6 +76,7 @@ describe("provider import/export helpers", () => {
           },
           {
             name: "Fresh",
+            disabled: true,
             "base-url": "https://fresh.example/v1",
             "api-key-entries": [{ "api-key": "sk-fresh" }],
           },
@@ -95,6 +96,7 @@ describe("provider import/export helpers", () => {
     expect(preview.nextItems).toEqual([
       {
         name: "Fresh",
+        disabled: true,
         baseUrl: "https://fresh.example/v1",
         apiKeyEntries: [{ apiKey: "sk-fresh" }],
       },
