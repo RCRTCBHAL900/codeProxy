@@ -439,9 +439,13 @@ export const resolveAuthFileRestrictionBadges = (
   nowMs = Date.now(),
 ): AuthFileRestrictionBadge[] => {
   const rawRestrictions = Array.isArray(file.restrictions) ? file.restrictions : [];
+  const displayableRawRestrictions = rawRestrictions.filter((restriction) => {
+    const scope = normalizeTagValue(restriction.scope);
+    return scope !== "model";
+  });
   const restrictions =
     rawRestrictions.length > 0
-      ? rawRestrictions
+      ? displayableRawRestrictions
       : isLegacyAuthRestrictionActive(file)
         ? [
             {
