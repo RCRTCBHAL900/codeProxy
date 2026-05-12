@@ -301,6 +301,7 @@ export function RoutingConfigEditor({
   const [groupEditorOpen, setGroupEditorOpen] = useState(false);
   const [groupEditorId, setGroupEditorId] = useState<string | null>(null);
   const [deleteGroupTarget, setDeleteGroupTarget] = useState<RoutingChannelGroupEntry | null>(null);
+  const [issueGroup, setIssueGroup] = useState<RoutingChannelGroupEntry | null>(null);
   const [groupDraft, setGroupDraft] = useState<GroupDraft>(() => createEmptyGroupDraft());
   const [groupEditorTab, setGroupEditorTab] = useState<"basic" | "models">("basic");
   const [modelOptions, setModelOptions] = useState<RoutingModelOption[]>([]);
@@ -391,6 +392,11 @@ export function RoutingConfigEditor({
     });
     return map;
   }, [getStaleChannels, values.routingChannelGroups]);
+
+  const issueStaleChannels = useMemo(
+    () => (issueGroup ? (staleChannelsByGroup.get(issueGroup.id) ?? []) : []),
+    [issueGroup, staleChannelsByGroup],
+  );
 
   const selectedChannelValues = useMemo(
     () => groupDraft.channels.map((channel) => channel.name.trim()).filter(Boolean),
@@ -509,7 +515,7 @@ export function RoutingConfigEditor({
   }, [onRefreshAvailableChannels]);
 
   const openEditGroup = useCallback(
-    (group: RoutingChannelGroupEntry) => {
+    (group: RoutingChannelGroupEntry, options?: { notifyStale?: boolean }) => {
       void Promise.resolve(onRefreshAvailableChannels?.()).catch(() => undefined);
       const isSystemDefault =
         group.system || group.name.trim().toLowerCase() === SYSTEM_DEFAULT_GROUP_NAME;
@@ -539,7 +545,7 @@ export function RoutingConfigEditor({
       setModelOptions([]);
       setModelsError("");
       setModelsSelectionTouched((group.allowedModels ?? []).length > 0);
-      if (!isSystemDefault) {
+      if (!isSystemDefault && options?.notifyStale !== false) {
         notifyStaleChannels(group.name.trim(), staleChannelsByGroup.get(group.id) ?? []);
       }
       setGroupEditorOpen(true);
@@ -802,7 +808,7 @@ export function RoutingConfigEditor({
       {
         key: "status",
         label: t("channel_groups_page.table_status"),
-        width: "w-[170px] min-w-[170px]",
+        width: "w-[112px] min-w-[112px]",
         cellClassName: "whitespace-nowrap",
         render: (group) => {
           const staleChannels = staleChannelsByGroup.get(group.id) ?? [];
@@ -816,15 +822,13 @@ export function RoutingConfigEditor({
           return (
             <button
               type="button"
-              onClick={() => openEditGroup(group)}
+              onClick={() => setIssueGroup(group)}
               disabled={disabled}
-              className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-40 dark:border-rose-400/30 dark:bg-rose-500/10 dark:text-rose-200 dark:hover:bg-rose-500/15"
+              title={t("channel_groups_page.view_issue_reason")}
+              className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300/50 disabled:opacity-40 dark:border-rose-400/30 dark:bg-rose-500/10 dark:text-rose-200 dark:hover:bg-rose-500/15 dark:focus-visible:ring-rose-300/20"
             >
               <TriangleAlert size={13} />
               <span>{t("channel_groups_page.status_invalid")}</span>
-              <span className="text-[11px] font-medium text-rose-600 dark:text-rose-200/85">
-                {t("channel_groups_page.deleted_channels_count", { count: staleChannels.length })}
-              </span>
             </button>
           );
         },
@@ -1253,6 +1257,90 @@ export function RoutingConfigEditor({
           }
         />
       </div>
+
+      <Modal
+        open={issueGroup !== null}
+        title={t("channel_groups_page.issue_modal_title")}
+        description={t("channel_groups_page.issue_modal_desc", {
+          group: issueGroup?.name.trim() || t("channel_groups_page.unnamed_group"),
+        })}
+        onClose={() => setIssueGroup(null)}
+        maxWidth="max-w-xl"
+        bodyClassName="space-y-4"
+        footer={
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button variant="secondary" onClick={() => setIssueGroup(null)}>
+              {t("common.close")}
+            </Button>
+            {issueGroup && issueStaleChannels.length > 0 ? (
+              <Button
+                variant="primary"
+                onClick={() => {
+                  const group = issueGroup;
+                  setIssueGroup(null);
+                  openEditGroup(group, { notifyStale: false });
+                }}
+                disabled={disabled}
+              >
+                {t("channel_groups_page.view_and_cleanup")}
+              </Button>
+            ) : null}
+          </div>
+        }
+      >
+        {issueGroup && issueStaleChannels.length > 0 ? (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-400/25 dark:bg-rose-500/10 dark:text-rose-100">
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white text-rose-600 dark:bg-rose-500/15 dark:text-rose-100">
+                  <TriangleAlert size={17} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold">{t("channel_groups_page.stale_alert_title")}</p>
+                  <p className="mt-1 text-xs leading-5 text-rose-700/90 dark:text-rose-100/80">
+                    {t("channel_groups_page.stale_alert_message", {
+                      count: issueStaleChannels.length,
+                    })}
+                  </p>
+                  <div className="mt-3 inline-flex items-center rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-rose-700 shadow-sm dark:bg-neutral-950/45 dark:text-rose-100">
+                    {t("channel_groups_page.deleted_channels_count", {
+                      count: issueStaleChannels.length,
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-neutral-800">
+              <div className="grid grid-cols-[minmax(0,1fr)_88px] bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500 dark:bg-neutral-900 dark:text-white/55">
+                <span>{t("channel_groups_page.table_channels")}</span>
+                <span>{t("channel_groups_page.table_status")}</span>
+              </div>
+              <div className="divide-y divide-slate-100 dark:divide-neutral-800">
+                {issueStaleChannels.map((channel) => (
+                  <div
+                    key={channel.id}
+                    className="grid grid-cols-[minmax(0,1fr)_88px] items-center gap-3 px-3 py-2.5 text-sm"
+                  >
+                    <OverflowTooltip content={channel.name} className="block min-w-0">
+                      <span className="block truncate font-medium text-slate-900 dark:text-white">
+                        {channel.name}
+                      </span>
+                    </OverflowTooltip>
+                    <span className="inline-flex justify-center rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 dark:bg-rose-500/15 dark:text-rose-100">
+                      {t("channel_groups_page.deleted_badge")}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500 dark:border-neutral-800 dark:bg-neutral-900/60 dark:text-white/55">
+            {t("channel_groups_page.issue_modal_empty")}
+          </div>
+        )}
+      </Modal>
 
       <Modal
         open={groupEditorOpen}

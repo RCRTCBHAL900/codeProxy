@@ -508,7 +508,7 @@ describe("RoutingConfigEditor", () => {
     expect(screen.getByTestId("route-count")).toHaveTextContent("0");
   });
 
-  test("shows stale channel status and details for groups that reference deleted channels", async () => {
+  test("shows only invalid in the status column and opens a reason dialog for stale channels", async () => {
     await i18n.changeLanguage("zh-CN");
     const user = userEvent.setup();
 
@@ -543,19 +543,17 @@ describe("RoutingConfigEditor", () => {
     );
 
     expect(screen.getByText("异常")).toBeInTheDocument();
-    expect(screen.getByText("1 个已删除渠道")).toBeInTheDocument();
+    expect(screen.queryByText("1 个已删除渠道")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /异常/ }));
 
-    expect(screen.getByText("该分组包含已删除渠道")).toBeInTheDocument();
-    expect(screen.getAllByText("Legacy Claude").length).toBeGreaterThan(1);
-    expect(screen.getAllByText("已删除").length).toBeGreaterThan(0);
-    expect(toastMocks.warning).toHaveBeenCalledWith(
-      "分组存在失效渠道",
-      expect.objectContaining({
-        description: expect.stringContaining("Legacy Claude"),
-      }),
-    );
+    const dialog = screen.getByRole("dialog", { name: "分组异常原因" });
+    expect(within(dialog).getByText("该分组包含已删除渠道")).toBeInTheDocument();
+    expect(within(dialog).getByText("1 个已删除渠道")).toBeInTheDocument();
+    expect(within(dialog).getByText("Legacy Claude")).toBeInTheDocument();
+    expect(within(dialog).getByText("已删除")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "编辑分组" })).not.toBeInTheDocument();
+    expect(toastMocks.warning).not.toHaveBeenCalled();
   });
 
   test("shows disabled auth-file channels as disabled instead of deleted", async () => {
@@ -606,8 +604,12 @@ describe("RoutingConfigEditor", () => {
 
     await user.click(screen.getByRole("button", { name: /异常/ }));
 
-    expect(screen.getByText("1 个已删除渠道")).toBeInTheDocument();
-    expect(screen.getAllByText("GptPlus6").length).toBeGreaterThan(0);
+    const dialog = screen.getByRole("dialog", { name: "分组异常原因" });
+    expect(within(dialog).getByText("1 个已删除渠道")).toBeInTheDocument();
+    expect(within(dialog).getByText("GptPlus6")).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("button", { name: "查看并清理" }));
+
     expect(screen.getAllByText("GptPlus8").length).toBeGreaterThan(0);
     const disabledRow = screen.getByRole("row", { name: /GptPlus8/ });
     expect(within(disabledRow).getByText("已禁用")).toBeInTheDocument();
