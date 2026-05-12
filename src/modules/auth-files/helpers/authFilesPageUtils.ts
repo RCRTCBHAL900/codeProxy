@@ -441,7 +441,13 @@ export const resolveAuthFileRestrictionBadges = (
   const rawRestrictions = Array.isArray(file.restrictions) ? file.restrictions : [];
   const displayableRawRestrictions = rawRestrictions.filter((restriction) => {
     const scope = normalizeTagValue(restriction.scope);
-    return scope !== "model";
+    if (scope === "model") return false;
+    const status = Number(restriction.http_status);
+    if (status === 429 || status >= 500) return false;
+    if (restriction.quota_exceeded || restriction.reason === "quota") return false;
+    const message = String(restriction.status_message ?? "").toLowerCase();
+    if (message.includes("usage_limit") || message.includes("usage limit")) return false;
+    return true;
   });
   const restrictions =
     rawRestrictions.length > 0

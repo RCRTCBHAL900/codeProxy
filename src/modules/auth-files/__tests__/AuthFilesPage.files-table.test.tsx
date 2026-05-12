@@ -387,6 +387,55 @@ describe("AuthFilesPage files table", () => {
     expect(within(card as HTMLElement).queryByText(rawError)).not.toBeInTheDocument();
   });
 
+  test("cards view hides auth-level quota recovery records from badge rows", async () => {
+    const now = Date.now();
+    window.localStorage.setItem("authFilesPage.filesViewMode.v1", JSON.stringify("cards"));
+    mocks.list.mockImplementation(async () => ({
+      files: [
+        {
+          name: "codex-plus.json",
+          label: "Codex Plus",
+          account_type: "oauth",
+          type: "codex",
+          plan_type: "plus",
+          size: 1024,
+          modified: now,
+          disabled: false,
+          restrictions: [
+            {
+              scope: "auth",
+              http_status: 429,
+              quota_exceeded: true,
+              reason: "quota",
+              status: "error",
+              status_message: '{"error":{"type":"usage_limit_reached","message":"usage limit"}}',
+              unavailable: true,
+              next_retry_after: new Date(now + 5 * 60 * 60 * 1000).toISOString(),
+            },
+          ],
+        },
+      ],
+    }));
+
+    render(
+      <MemoryRouter initialEntries={["/auth-files"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/auth-files" element={<AuthFilesPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    const title = await screen.findByText("Codex Plus");
+    const card = title.closest("section");
+    expect(card).not.toBeNull();
+    expect(within(card as HTMLElement).queryByText("Restricted")).not.toBeInTheDocument();
+    expect(within(card as HTMLElement).queryByText("429 Error")).not.toBeInTheDocument();
+  });
+
   test("supports multi-select delete from the toolbar", async () => {
     render(
       <MemoryRouter initialEntries={["/auth-files"]}>

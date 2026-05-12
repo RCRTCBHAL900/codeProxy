@@ -331,6 +331,28 @@ describe("Auth Files helper coverage", () => {
     ).toEqual([]);
   });
 
+  test("ignores auth-level quota recovery records as auth-file restriction badges", () => {
+    const file = {
+      name: "codex.json",
+      restrictions: [
+        {
+          scope: "auth",
+          http_status: 429,
+          quota_exceeded: true,
+          reason: "quota",
+          status: "error",
+          status_message: '{"error":{"type":"usage_limit_reached","message":"usage limit"}}',
+          unavailable: true,
+          next_retry_after: "2026-05-06T13:00:00.000Z",
+        },
+      ],
+    } as AuthFileItem;
+
+    expect(
+      resolveAuthFileRestrictionBadges(file, Date.parse("2026-05-06T08:00:00.000Z")),
+    ).toEqual([]);
+  });
+
   test("does not derive restriction badges from normal auth status", () => {
     expect(
       resolveAuthFileRestrictionBadges({
