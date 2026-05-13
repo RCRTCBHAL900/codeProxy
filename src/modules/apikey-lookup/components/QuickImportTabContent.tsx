@@ -277,7 +277,6 @@ export function QuickImportTabContent({
         className="overflow-hidden"
         loading={loading}
         title={t("apikey_lookup.quick_import_cards_title")}
-        description={t("apikey_lookup.quick_import_cards_desc")}
       >
         {error ? (
           <div className="border-b border-rose-100 bg-rose-50 px-5 py-2.5 text-sm text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-200">

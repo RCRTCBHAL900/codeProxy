@@ -90,6 +90,10 @@ describe("QuickImportTabContent", () => {
     const codexSection = await screen.findByRole("region", { name: /codex quick imports/i });
     const claudeSection = await screen.findByRole("region", { name: /claude quick imports/i });
 
+    expect(screen.getByRole("heading", { name: /cc switch card presets/i })).toBeInTheDocument();
+    expect(
+      screen.queryByText(/only codex and claude presets are shown here for now/i),
+    ).not.toBeInTheDocument();
     expect(within(codexSection).getByRole("button", { name: /team codex/i })).toBeInTheDocument();
     expect(within(claudeSection).getByRole("button", { name: /team claude/i })).toBeInTheDocument();
     expect(screen.queryByText("Team Gemini")).not.toBeInTheDocument();
