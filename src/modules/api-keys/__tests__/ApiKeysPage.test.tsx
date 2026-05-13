@@ -757,13 +757,12 @@ describe("ApiKeysPage", () => {
     openSpy.mockRestore();
   });
 
-  test("filters CC Switch presets by the API key allowed models", async () => {
+  test("filters CC Switch presets by the API key target models", async () => {
     state.entries = [
       {
         key: "sk-limited-models-1234567890",
         name: "KimiCode+DeepSeek",
-        "allowed-channel-groups": ["team-a"],
-        "allowed-models": ["kimi-k2.6", "deepseek-v4"],
+        "allowed-models": ["deepseek-v4-flash", "deepseek-v4-pro", "kimi-k2.5", "kimi-k2.6"],
         "created-at": "2026-04-14T00:00:00.000Z",
       },
     ];
@@ -783,8 +782,12 @@ describe("ApiKeysPage", () => {
         "default-model": "gpt-5.5",
         "allowed-channel-groups": ["team-a"],
         "model-mappings": [
-          { role: "main", "request-model": "gpt-5.5", "target-model": "gpt-5.5" },
-          { role: "haiku", "request-model": "deepseek-v4", "target-model": "deepseek-v4" },
+          { role: "main", "request-model": "claude-opus-4-7", "target-model": "gpt-5.5" },
+          {
+            role: "haiku",
+            "request-model": "claude-haiku-4-5",
+            "target-model": "deepseek-v4-flash",
+          },
         ],
       },
       {
@@ -803,8 +806,18 @@ describe("ApiKeysPage", () => {
         "default-model": "kimi-k2.6",
         "allowed-channel-groups": ["team-a"],
         "model-mappings": [
-          { role: "main", "request-model": "kimi-k2.6", "target-model": "kimi-k2.6" },
-          { role: "haiku", "request-model": "deepseek-v4", "target-model": "deepseek-v4" },
+          { role: "main", "request-model": "claude-opus-4-7", "target-model": "kimi-k2.6" },
+          {
+            role: "haiku",
+            "request-model": "claude-haiku-4-5",
+            "target-model": "deepseek-v4-flash",
+          },
+          {
+            role: "sonnet",
+            "request-model": "claude-sonnet-4-6",
+            "target-model": "deepseek-v4-flash",
+          },
+          { role: "opus", "request-model": "claude-opus-4-7", "target-model": "kimi-k2.6" },
         ],
       },
     ];

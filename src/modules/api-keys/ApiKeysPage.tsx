@@ -73,25 +73,12 @@ function normalizeModelList(models: readonly unknown[] | undefined): string[] {
   return normalized;
 }
 
-function getCcSwitchImportRequestModels(config: CcSwitchImportConfigListItem): string[] {
-  const models: string[] = [];
-  const addModel = (model: unknown) => {
-    const value = String(model ?? "").trim();
-    if (value) models.push(value);
-  };
-
-  addModel(config.defaultModel);
-
-  if (config.clientType === "claude") {
-    config.modelMappings.forEach((mapping) => {
-      if (!mapping.role) return;
-      const requestModel = mapping.requestModel.trim();
-      const targetModel = mapping.targetModel.trim();
-      addModel(!requestModel || requestModel === mapping.role ? targetModel : requestModel);
-    });
-  }
-
-  return normalizeModelList(models);
+function getCcSwitchImportTargetModels(config: CcSwitchImportConfigListItem): string[] {
+  const mappedTargets = normalizeModelList(
+    config.modelMappings.map((mapping) => mapping.targetModel),
+  );
+  if (mappedTargets.length > 0) return mappedTargets;
+  return normalizeModelList([config.defaultModel]);
 }
 
 function ccSwitchConfigMatchesAllowedModels(
@@ -100,9 +87,9 @@ function ccSwitchConfigMatchesAllowedModels(
 ): boolean {
   if (allowedModels.length === 0) return true;
   const allowed = new Set(allowedModels);
-  const requestModels = getCcSwitchImportRequestModels(config);
-  if (requestModels.length === 0) return true;
-  return requestModels.every((model) => allowed.has(model));
+  const targetModels = getCcSwitchImportTargetModels(config);
+  if (targetModels.length === 0) return true;
+  return targetModels.every((model) => allowed.has(model));
 }
 
 async function copyTextToClipboard(text: string): Promise<boolean> {
