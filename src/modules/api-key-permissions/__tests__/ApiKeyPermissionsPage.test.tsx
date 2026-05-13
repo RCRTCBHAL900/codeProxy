@@ -125,6 +125,14 @@ describe("ApiKeyPermissionsPage", () => {
         "allowed-models": ["old-model"],
         "created-at": "2026-05-02T00:00:00.000Z",
       },
+      {
+        key: "sk-team-c-1234567890",
+        name: "Team C",
+        "daily-limit": 15000,
+        "allowed-channel-groups": ["legacy"],
+        "system-prompt": "标准系统提示词",
+        "created-at": "2026-05-03T00:00:00.000Z",
+      },
     ];
     state.configYaml = "";
     state.permissionProfiles = [
@@ -177,6 +185,8 @@ describe("ApiKeyPermissionsPage", () => {
     expect(await screen.findByText("标准配置")).toBeInTheDocument();
     expect(screen.queryByText("Team A")).not.toBeInTheDocument();
     expect(screen.getByText("每日 15,000")).toBeInTheDocument();
+    expect(screen.getByText("分组 1 · 渠道 无限制 · 模型 无限制")).toBeInTheDocument();
+    expect(screen.getByText("已绑定 2 个")).toBeInTheDocument();
     expect(screen.getByText("标准系统提示词")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "新增配置" }));
@@ -215,5 +225,35 @@ describe("ApiKeyPermissionsPage", () => {
     });
     expect(mocks.fetchConfigYaml).not.toHaveBeenCalled();
     expect(mocks.saveConfigYaml).not.toHaveBeenCalled();
+  });
+
+  test("updates API keys that are explicitly or historically bound to an edited profile", async () => {
+    renderPage();
+
+    expect(await screen.findByText("标准配置")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "编辑" }));
+    const dialog = await screen.findByRole("dialog", { name: "编辑权限配置" });
+    const dailyLimit = within(dialog).getByRole("spinbutton", { name: "每日请求限额" });
+    await userEvent.clear(dailyLimit);
+    await userEvent.type(dailyLimit, "16000");
+    await userEvent.click(within(dialog).getByRole("button", { name: "保存配置" }));
+
+    await waitFor(() => {
+      expect(mocks.apiKeyEntriesReplace).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            name: "Team A",
+            "permission-profile-id": "standard",
+            "daily-limit": 16000,
+          }),
+          expect.objectContaining({
+            name: "Team C",
+            "permission-profile-id": "standard",
+            "daily-limit": 16000,
+          }),
+        ]),
+      );
+    });
   });
 });

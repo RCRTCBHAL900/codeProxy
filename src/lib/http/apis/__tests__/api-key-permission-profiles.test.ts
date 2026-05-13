@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { apiKeyPermissionProfilesApi } from "@/lib/http/apis/api-key-permission-profiles";
+import {
+  apiKeyPermissionProfilesApi,
+  resolveEntryPermissionProfileId,
+} from "@/lib/http/apis/api-key-permission-profiles";
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
@@ -78,5 +81,42 @@ describe("apiKeyPermissionProfilesApi", () => {
       }),
     ]);
     expect(mocks.putRawText).not.toHaveBeenCalled();
+  });
+
+  test("uses explicit profile binding and does not infer unrestricted entries as bound", () => {
+    const profiles = [
+      {
+        id: "unrestricted",
+        name: "Unrestricted",
+        "daily-limit": 0,
+        "total-quota": 0,
+        "concurrency-limit": 0,
+        "rpm-limit": 0,
+        "tpm-limit": 0,
+        "allowed-channel-groups": [],
+        "allowed-channels": [],
+        "allowed-models": [],
+        "system-prompt": "",
+      },
+    ];
+
+    expect(
+      resolveEntryPermissionProfileId(
+        {
+          key: "sk-explicit",
+          "permission-profile-id": "unrestricted",
+        },
+        profiles,
+      ),
+    ).toBe("unrestricted");
+
+    expect(
+      resolveEntryPermissionProfileId(
+        {
+          key: "sk-plain",
+        },
+        profiles,
+      ),
+    ).toBe("");
   });
 });
