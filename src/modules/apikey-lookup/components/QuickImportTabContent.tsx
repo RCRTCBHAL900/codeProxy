@@ -207,6 +207,52 @@ function QuickImportCard({
   );
 }
 
+function QuickImportLoadingSkeleton() {
+  const { t } = useTranslation();
+
+  return (
+    <Card
+      padding="none"
+      className="overflow-hidden border-slate-200/70 bg-white/90 dark:border-white/[0.06] dark:bg-neutral-950/70"
+    >
+      <div
+        data-testid="quick-import-loading-skeleton"
+        aria-busy="true"
+        aria-label={t("common.loading_ellipsis")}
+        className="space-y-5 px-5 py-4"
+      >
+        {QUICK_IMPORT_CLIENTS.map((clientType) => (
+          <section key={clientType} className="space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="h-4 w-4 rounded-md bg-slate-200 motion-safe:animate-pulse dark:bg-neutral-800" />
+              <span className="h-4 w-24 rounded-md bg-slate-200 motion-safe:animate-pulse dark:bg-neutral-800" />
+              <span className="h-5 w-8 rounded-full bg-slate-100 motion-safe:animate-pulse dark:bg-neutral-900" />
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {[0, 1].map((index) => (
+                <div
+                  key={index}
+                  className="flex min-h-[116px] items-start gap-4 rounded-2xl border border-black/[0.06] bg-white p-4 shadow-[0_1px_2px_rgb(15_23_42_/_0.035)] dark:border-white/[0.06] dark:bg-neutral-900"
+                >
+                  <span className="h-10 w-10 shrink-0 rounded-xl bg-slate-100 motion-safe:animate-pulse dark:bg-neutral-800" />
+                  <span className="min-w-0 flex-1 space-y-3 pt-0.5">
+                    <span className="block h-4 w-1/2 rounded-md bg-slate-200 motion-safe:animate-pulse dark:bg-neutral-800" />
+                    <span className="block h-3 w-2/3 rounded-md bg-slate-100 motion-safe:animate-pulse dark:bg-neutral-900" />
+                    <span className="flex gap-2 pt-1">
+                      <span className="h-5 w-24 rounded-md bg-slate-100 motion-safe:animate-pulse dark:bg-neutral-900" />
+                      <span className="h-5 w-16 rounded-md bg-slate-100 motion-safe:animate-pulse dark:bg-neutral-900" />
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 export function QuickImportTabContent({
   apiKey,
   reloadToken = 0,
@@ -319,47 +365,49 @@ export function QuickImportTabContent({
         </div>
       </Card>
 
-      <Card
-        padding="none"
-        className="overflow-hidden"
-        loading={loading}
-      >
-        {error ? (
-          <div className="border-b border-rose-100 bg-rose-50 px-5 py-2.5 text-sm text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-200">
-            {error}
+      {loading ? <QuickImportLoadingSkeleton /> : null}
+
+      {!loading ? (
+        <Card padding="none" className="overflow-hidden">
+          {error ? (
+            <div className="border-b border-rose-100 bg-rose-50 px-5 py-2.5 text-sm text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-200">
+              {error}
+            </div>
+          ) : null}
+          <div className="space-y-5 px-5 py-4">
+            {QUICK_IMPORT_CLIENTS.map((clientType) => {
+              const typedClient = clientType as "codex" | "claude";
+              const items = groupedConfigs[typedClient];
+              const label = t(clientLabelKey[typedClient]);
+
+              if (items.length === 0) return null;
+
+              return (
+                <section
+                  key={typedClient}
+                  aria-label={t("apikey_lookup.quick_import_group_aria", { client: label })}
+                  className="space-y-3"
+                >
+                  <div className="flex items-center gap-2">
+                    <img src={iconByType[typedClient]} alt="" className="h-4 w-4" />
+                    <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                      {label}
+                    </h3>
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold tabular-nums text-slate-500 dark:bg-neutral-900 dark:text-white/45">
+                      {items.length}
+                    </span>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {items.map((config) => (
+                      <QuickImportCard key={config.id} config={config} onSelect={handleImport} />
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
           </div>
-        ) : null}
-        <div className="space-y-5 px-5 py-4">
-          {QUICK_IMPORT_CLIENTS.map((clientType) => {
-            const typedClient = clientType as "codex" | "claude";
-            const items = groupedConfigs[typedClient];
-            const label = t(clientLabelKey[typedClient]);
-
-            if (items.length === 0) return null;
-
-            return (
-              <section
-                key={typedClient}
-                aria-label={t("apikey_lookup.quick_import_group_aria", { client: label })}
-                className="space-y-3"
-              >
-                <div className="flex items-center gap-2">
-                  <img src={iconByType[typedClient]} alt="" className="h-4 w-4" />
-                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{label}</h3>
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold tabular-nums text-slate-500 dark:bg-neutral-900 dark:text-white/45">
-                    {items.length}
-                  </span>
-                </div>
-                <div className="grid gap-3 md:grid-cols-2">
-                  {items.map((config) => (
-                    <QuickImportCard key={config.id} config={config} onSelect={handleImport} />
-                  ))}
-                </div>
-              </section>
-            );
-          })}
-        </div>
-      </Card>
+        </Card>
+      ) : null}
     </div>
   );
 }

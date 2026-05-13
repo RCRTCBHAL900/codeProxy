@@ -138,6 +138,21 @@ describe("QuickImportTabContent", () => {
     expect(screen.queryByText(/no claude presets yet/i)).not.toBeInTheDocument();
   });
 
+  test("renders a stable skeleton while quick import cards are loading", () => {
+    vi.mocked(globalThis.fetch).mockReturnValue(new Promise<Response>(() => {}));
+
+    render(
+      <ThemeProvider>
+        <ToastProvider>
+          <QuickImportTabContent apiKey="sk-lookup-key" />
+        </ToastProvider>
+      </ThemeProvider>,
+    );
+
+    expect(screen.getByTestId("quick-import-loading-skeleton")).toBeInTheDocument();
+    expect(screen.queryByText(/loading/i)).not.toBeInTheDocument();
+  });
+
   test("filters quick import cards by the looked up API key permissions", async () => {
     window.localStorage.setItem(
       "code-proxy-admin-auth",
