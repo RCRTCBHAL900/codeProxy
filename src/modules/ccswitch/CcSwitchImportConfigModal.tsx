@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { LoaderCircle } from "lucide-react";
+import { LoaderCircle, Plus, Trash2 } from "lucide-react";
 import iconClaude from "@/assets/icons/claude.svg";
 import iconCodex from "@/assets/icons/codex.svg";
 import iconGemini from "@/assets/icons/gemini.svg";
@@ -58,6 +58,7 @@ const fieldClassName = "flex flex-col gap-1.5";
 
 const CLAUDE_ROLE_ORDER: CcSwitchClaudeModelRole[] = ["main", "haiku", "sonnet", "opus"];
 const MODEL_MAPPING_LOADING_ROWS = ["short", "medium", "long"];
+const CONFIG_MODAL_CLIENTS = CC_SWITCH_CLIENTS.filter((client) => client.type !== "gemini");
 
 const rolePriority: Record<CcSwitchClaudeModelRole, string[]> = {
   main: ["sonnet", "opus", "haiku", "claude"],
@@ -195,6 +196,15 @@ function resolveGenericDefaultModel(
 }
 
 function reconcileModelMappings(draft: ConfigDraft, models: readonly string[]): ConfigDraft {
+  if (draft.clientType === "codex") {
+    const modelMappings = draft.modelMappings.filter((mapping) => !mapping.role);
+    return {
+      ...draft,
+      modelMappings,
+      defaultModel: resolveGenericDefaultModel(modelMappings, draft.defaultModel),
+    };
+  }
+
   const modelMappings =
     draft.clientType === "claude"
       ? reconcileClaudeMappings(draft.modelMappings, models, draft.defaultModel)
@@ -217,6 +227,21 @@ function modelOptions(models: readonly string[]): SearchableSelectOption[] {
     label: model,
     searchText: model,
   }));
+}
+
+function getDuplicateGenericTargetModels(modelMappings: readonly CcSwitchModelMapping[]): string[] {
+  const counts = new Map<string, { label: string; count: number }>();
+  for (const mapping of modelMappings) {
+    if (mapping.role) continue;
+    const targetModel = mapping.targetModel.trim();
+    if (!targetModel) continue;
+    const key = targetModel.toLowerCase();
+    const current = counts.get(key);
+    counts.set(key, { label: current?.label ?? targetModel, count: (current?.count ?? 0) + 1 });
+  }
+  return Array.from(counts.values())
+    .filter((item) => item.count > 1)
+    .map((item) => item.label);
 }
 
 function prepareDraftForSave(draft: ConfigDraft): ConfigDraft {
@@ -456,14 +481,25 @@ export function CcSwitchImportConfigModal({
     appendUrlPath(baseUrl, previewRoutePath),
     DEFAULT_CC_SWITCH_IMPORT_SETTINGS[draft.clientType].endpointPath,
   );
-  const currentModelOptions = useMemo(() => modelOptions(availableModels), [availableModels]);
+  const currentModelOptions = useMemo(
+    () =>
+      modelOptions([
+        ...availableModels,
+        ...draft.modelMappings
+          .filter((mapping) => !mapping.role)
+          .map((mapping) => mapping.targetModel),
+      ]),
+    [availableModels, draft.modelMappings],
+  );
   const preparedDraft = prepareDraftForSave(draft);
   const modelMappingsLoading = Boolean(selectedGroup && modelsLoading);
+  const duplicateActualModels = getDuplicateGenericTargetModels(draft.modelMappings);
   const isSaveDisabled =
     !preparedDraft.providerName.trim() ||
     !selectedGroup ||
     !preparedDraft.defaultModel.trim() ||
     preparedDraft.modelMappings.length === 0 ||
+    duplicateActualModels.length > 0 ||
     modelMappingsLoading;
 
   const setClientType = (clientType: CcSwitchClientType) => {
@@ -495,12 +531,51 @@ export function CcSwitchImportConfigModal({
     );
   };
 
-  const updateGenericRequestModel = (targetModel: string, requestModel: string) => {
+  const addGenericModelMapping = () => {
+    setDraft((current) => ({
+      ...current,
+      modelMappings: [
+        ...current.modelMappings.filter((mapping) => !mapping.role),
+        {
+          requestModel: "",
+          targetModel: "",
+        },
+      ],
+      defaultModel: current.defaultModel.trim(),
+    }));
+  };
+
+  const removeGenericModelMapping = (index: number) => {
     setDraft((current) => {
-      const modelMappings = current.modelMappings.map((mapping) =>
-        !mapping.role && mapping.targetModel === targetModel
-          ? { ...mapping, requestModel }
-          : mapping,
+      const modelMappings = current.modelMappings.filter((mapping, mappingIndex) => {
+        if (mapping.role) return false;
+        return mappingIndex !== index;
+      });
+      return {
+        ...current,
+        modelMappings,
+        defaultModel: resolveGenericDefaultModel(modelMappings, current.defaultModel),
+      };
+    });
+  };
+
+  const updateGenericTargetModel = (index: number, targetModel: string) => {
+    setDraft((current) => {
+      const modelMappings = current.modelMappings.map((mapping, mappingIndex) =>
+        !mapping.role && mappingIndex === index ? { ...mapping, targetModel } : mapping,
+      );
+      return {
+        ...current,
+        modelMappings,
+        defaultModel: resolveGenericDefaultModel(modelMappings, current.defaultModel),
+      };
+    });
+  };
+
+  const updateGenericRequestModel = (index: number, requestModel: string) => {
+    setDraft((current) => {
+      const modelMappings = current.modelMappings.map((mapping, mappingIndex) =>
+        !mapping.role && mappingIndex === index ? { ...mapping, requestModel } : mapping,
       );
       return {
         ...current,
@@ -606,7 +681,7 @@ export function CcSwitchImportConfigModal({
           onValueChange={(next) => setClientType(next as CcSwitchClientType)}
         >
           <TabsList aria-label={t("ccswitch.import_client_type")}>
-            {CC_SWITCH_CLIENTS.map((item) => {
+            {CONFIG_MODAL_CLIENTS.map((item) => {
               const label = t(item.labelKey);
               return (
                 <TabsTrigger key={item.type} value={item.type} aria-label={label}>
@@ -707,6 +782,16 @@ export function CcSwitchImportConfigModal({
                 <LoaderCircle size={12} className="animate-spin" />
                 {t("ccswitch.import_model_loading")}
               </span>
+            ) : draft.clientType === "codex" ? (
+              <Button
+                size="xs"
+                variant="secondary"
+                onClick={addGenericModelMapping}
+                disabled={!selectedGroup}
+              >
+                <Plus size={13} />
+                {t("ccswitch.config_add_model_mapping")}
+              </Button>
             ) : null}
           </div>
 
@@ -749,7 +834,9 @@ export function CcSwitchImportConfigModal({
           ) : draft.modelMappings.length === 0 ? (
             <div className="px-4 py-8 text-center text-sm text-slate-500 dark:text-white/50">
               {selectedGroup
-                ? t("ccswitch.config_model_mapping_empty")
+                ? draft.clientType === "codex"
+                  ? t("ccswitch.config_model_mapping_empty_manual")
+                  : t("ccswitch.config_model_mapping_empty")
                 : t("ccswitch.config_model_mapping_select_group_first")}
             </div>
           ) : (
@@ -810,7 +897,7 @@ export function CcSwitchImportConfigModal({
                   </tbody>
                 </table>
               ) : (
-                <table className="min-w-[620px] w-full text-left text-sm">
+                <table className="min-w-[720px] w-full text-left text-sm">
                   <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500 dark:bg-neutral-900/60 dark:text-white/45">
                     <tr>
                       <th className="px-4 py-2.5 font-semibold">
@@ -819,34 +906,66 @@ export function CcSwitchImportConfigModal({
                       <th className="px-4 py-2.5 font-semibold">
                         {t("ccswitch.config_request_model_name")}
                       </th>
+                      <th className="w-16 px-4 py-2.5 text-right font-semibold">
+                        {t("ccswitch.config_table_actions")}
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200/70 dark:divide-neutral-800">
-                    {draft.modelMappings.map((mapping) => (
-                      <tr key={mapping.targetModel}>
+                    {draft.modelMappings.map((mapping, index) => (
+                      <tr key={index}>
                         <td className="px-4 py-3">
-                          <span className="font-mono text-xs font-semibold text-slate-700 dark:text-white/75">
-                            {mapping.targetModel}
-                          </span>
+                          <SearchableSelect
+                            value={mapping.targetModel}
+                            onChange={(next) => updateGenericTargetModel(index, next)}
+                            options={currentModelOptions}
+                            allowCreate
+                            createLabel={(value) => t("ccswitch.model_use_custom", { value })}
+                            placeholder={t("ccswitch.import_model_placeholder")}
+                            searchPlaceholder={t("ccswitch.config_model_search_placeholder")}
+                            aria-label={t("ccswitch.config_actual_channel_model_for_mapping", {
+                              index: index + 1,
+                            })}
+                            className={`${controlClassName} w-full`}
+                          />
                         </td>
                         <td className="px-4 py-3">
                           <TextInput
                             value={mapping.requestModel}
                             onChange={(event) => {
                               const requestModel = event.currentTarget.value;
-                              updateGenericRequestModel(mapping.targetModel, requestModel);
+                              updateGenericRequestModel(index, requestModel);
                             }}
-                            aria-label={t("ccswitch.config_request_model_for", {
-                              model: mapping.targetModel,
+                            aria-label={t("ccswitch.config_request_model_for_mapping", {
+                              index: index + 1,
                             })}
                             className={controlClassName}
                           />
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            aria-label={t("ccswitch.config_delete_model_mapping", {
+                              index: index + 1,
+                            })}
+                            onClick={() => removeGenericModelMapping(index)}
+                          >
+                            <Trash2 size={14} />
+                          </Button>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               )}
+              {duplicateActualModels.length > 0 ? (
+                <div className="border-t border-rose-100 bg-rose-50 px-4 py-2 text-xs font-medium text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-200">
+                  {t("ccswitch.config_actual_model_duplicate", {
+                    model: duplicateActualModels.join(", "),
+                  })}
+                </div>
+              ) : null}
             </div>
           )}
         </section>
