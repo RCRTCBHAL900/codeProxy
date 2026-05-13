@@ -3,6 +3,8 @@ import { Tabs, TabsList, TabsTrigger } from "@/modules/ui/Tabs";
 import { TimeRangeSelector } from "@/modules/monitor/MonitorPagePieces";
 import type { TimeRange } from "@/modules/monitor/monitor-constants";
 
+export type ApiKeyLookupTab = "usage" | "logs" | "models" | "quickImport";
+
 export function LookupResultsToolbar({
   t,
   activeTab,
@@ -15,8 +17,8 @@ export function LookupResultsToolbar({
   modelsLoading,
 }: {
   t: (key: string, options?: Record<string, unknown>) => string;
-  activeTab: "usage" | "logs" | "models";
-  setActiveTab: (value: "usage" | "logs" | "models") => void;
+  activeTab: ApiKeyLookupTab;
+  setActiveTab: (value: ApiKeyLookupTab) => void;
   timeRange: TimeRange;
   setTimeRange: (value: TimeRange) => void;
   handleRefresh: () => void;
@@ -32,9 +34,10 @@ export function LookupResultsToolbar({
             <TabsTrigger value="usage">{t("apikey_lookup.usage_stats")}</TabsTrigger>
             <TabsTrigger value="logs">{t("apikey_lookup.request_logs")}</TabsTrigger>
             <TabsTrigger value="models">{t("apikey_lookup.available_models")}</TabsTrigger>
+            <TabsTrigger value="quickImport">{t("apikey_lookup.quick_import")}</TabsTrigger>
           </TabsList>
         </Tabs>
-        {activeTab !== "models" ? (
+        {activeTab === "usage" || activeTab === "logs" ? (
           <TimeRangeSelector value={timeRange} onChange={setTimeRange} />
         ) : null}
       </div>
