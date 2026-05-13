@@ -1,5 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import i18n from "@/i18n";
 import { ModelsTabContent } from "@/modules/apikey-lookup/components/ModelsTabContent";
@@ -11,11 +10,8 @@ describe("ModelsTabContent", () => {
     vi.restoreAllMocks();
   });
 
-  test("renders CC Switch import cards and launches selected provider deeplink", async () => {
+  test("does not render the CC Switch import action inside available models", async () => {
     await i18n.changeLanguage("en");
-    window.localStorage.clear();
-    const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
-    vi.spyOn(document, "hasFocus").mockReturnValue(false);
 
     render(
       <ThemeProvider>
@@ -26,29 +22,12 @@ describe("ModelsTabContent", () => {
             error={null}
             searchFilter=""
             onSearchChange={() => {}}
-            apiKey="sk-lookup-key"
           />
         </ToastProvider>
       </ThemeProvider>,
     );
 
-    expect(screen.getByText(/import to cc switch/i)).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("button", { name: /import codex/i }));
-
-    await waitFor(() => {
-      expect(openSpy).toHaveBeenCalledWith(
-        expect.stringContaining("ccswitch://v1/import?"),
-        "_self",
-      );
-    });
-
-    const openedUrl = String(openSpy.mock.calls.at(-1)?.[0] ?? "");
-    const parsed = new URL(openedUrl);
-    expect(parsed.searchParams.get("app")).toBe("codex");
-    expect(parsed.searchParams.get("model")).toBe("gpt-5.5");
-    expect(parsed.searchParams.get("endpoint")).toMatch(/\/v1$/);
-    expect(parsed.searchParams.get("usageBaseUrl")).not.toMatch(/\/v1$/);
-    expect(parsed.searchParams.get("apiKey")).toBe("sk-lookup-key");
+    expect(screen.queryByText(/import to cc switch/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /import codex/i })).not.toBeInTheDocument();
   });
 });
