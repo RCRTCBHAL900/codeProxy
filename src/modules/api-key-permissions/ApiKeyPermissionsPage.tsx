@@ -6,6 +6,7 @@ import {
   applyApiKeyPermissionProfile,
   apiKeyPermissionProfilesApi,
   makePermissionProfileId,
+  resolveEntryPermissionProfileId,
   type ApiKeyPermissionProfile,
 } from "@/lib/http/apis/api-key-permission-profiles";
 import { RestrictionMultiSelect } from "@/modules/api-keys/RestrictionMultiSelect";
@@ -89,8 +90,12 @@ const draftToProfile = (draft: ProfileDraft): ApiKeyPermissionProfile => ({
 const formatLimit = (value: number, unlimited: string) =>
   value > 0 ? value.toLocaleString() : unlimited;
 
+const formatRestrictionCount = (count: number, unlimited: string) =>
+  count > 0 ? count.toLocaleString() : unlimited;
+
 const boundProfileCount = (profile: ApiKeyPermissionProfile, entries: ApiKeyEntry[]) =>
-  entries.filter((entry) => entry["permission-profile-id"] === profile.id).length;
+  entries.filter((entry) => resolveEntryPermissionProfileId(entry, [profile]) === profile.id)
+    .length;
 
 export function ApiKeyPermissionsPage() {
   const { t } = useTranslation();
@@ -201,6 +206,7 @@ export function ApiKeyPermissionsPage() {
     setSaving(true);
     try {
       const isEdit = profiles.some((item) => item.id === profile.id);
+      const previousProfile = profiles.find((item) => item.id === profile.id) ?? null;
       const nextProfiles = isEdit
         ? profiles.map((item) => (item.id === profile.id ? profile : item))
         : [...profiles, profile];
@@ -208,11 +214,13 @@ export function ApiKeyPermissionsPage() {
 
       let nextEntries = entries;
       if (isEdit) {
-        nextEntries = entries.map((entry) =>
-          entry["permission-profile-id"] === profile.id
-            ? applyApiKeyPermissionProfile(entry, profile)
-            : entry,
-        );
+        nextEntries = entries.map((entry) => {
+          const wasBound =
+            entry["permission-profile-id"] === profile.id ||
+            (previousProfile !== null &&
+              resolveEntryPermissionProfileId(entry, [previousProfile]) === previousProfile.id);
+          return wasBound ? applyApiKeyPermissionProfile(entry, profile) : entry;
+        });
         if (JSON.stringify(nextEntries) !== JSON.stringify(entries)) {
           await apiKeyEntriesApi.replace(nextEntries);
         }
@@ -300,9 +308,18 @@ export function ApiKeyPermissionsPage() {
         width: "w-[220px] min-w-[220px]",
         render: (profile) =>
           t("api_key_permissions_page.permission_summary", {
-            groups: profile["allowed-channel-groups"].length,
-            channels: profile["allowed-channels"].length,
-            models: profile["allowed-models"].length,
+            groups: formatRestrictionCount(
+              profile["allowed-channel-groups"].length,
+              t("api_keys_page.unlimited"),
+            ),
+            channels: formatRestrictionCount(
+              profile["allowed-channels"].length,
+              t("api_keys_page.unlimited"),
+            ),
+            models: formatRestrictionCount(
+              profile["allowed-models"].length,
+              t("api_keys_page.unlimited"),
+            ),
           }),
       },
       {

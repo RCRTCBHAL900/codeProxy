@@ -186,9 +186,10 @@ export function resolveEntryPermissionProfileId(
 ): string {
   const explicit = normalizeString(entry["permission-profile-id"]);
   if (explicit && profiles.some((profile) => profile.id === explicit)) return explicit;
+  if (!hasApiKeyPermissionSettings(entry)) return "";
   const match = findMatchingPermissionProfile(entry, profiles);
   if (match) return match.id;
-  return hasApiKeyPermissionSettings(entry) ? CUSTOM_PERMISSION_PROFILE_ID : "";
+  return CUSTOM_PERMISSION_PROFILE_ID;
 }
 
 export const apiKeyPermissionProfilesApi = {
