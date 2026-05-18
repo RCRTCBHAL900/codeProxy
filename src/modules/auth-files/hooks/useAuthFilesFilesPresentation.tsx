@@ -498,7 +498,7 @@ export function useAuthFilesFilesPresentation({
       {
         key: "select",
         label: "",
-        width: "w-16",
+        width: "w-14",
         headerClassName: "text-center",
         cellClassName: "text-center",
         headerRender: () => (
@@ -539,7 +539,7 @@ export function useAuthFilesFilesPresentation({
       {
         key: "name",
         label: t("auth_files.col_name"),
-        width: "w-96",
+        width: "w-72",
         render: (file) => (
           <div className="min-w-0">
             <p className="truncate font-mono text-xs text-slate-900 dark:text-white">
@@ -566,7 +566,7 @@ export function useAuthFilesFilesPresentation({
       {
         key: "type",
         label: t("auth_files.col_type"),
-        width: "w-44",
+        width: "w-32",
         render: (file) => {
           const typeKey = resolveFileType(file);
           const badgeClass = TYPE_BADGE_CLASSES[typeKey] ?? TYPE_BADGE_CLASSES.unknown;
@@ -603,7 +603,7 @@ export function useAuthFilesFilesPresentation({
       {
         key: "subscription",
         label: t("auth_files.col_subscription"),
-        width: "w-56",
+        width: "w-40",
         render: (file) =>
           renderSubscriptionBadge(file) ?? (
             <span className="text-xs text-slate-400 dark:text-white/40">--</span>
@@ -612,7 +612,7 @@ export function useAuthFilesFilesPresentation({
       {
         key: "size",
         label: t("auth_files.file_size"),
-        width: "w-28",
+        width: "w-24",
         render: (file) => (
           <span className="text-xs tabular-nums text-slate-700 dark:text-white/70">
             {formatFileSize(file.size)}
@@ -622,7 +622,7 @@ export function useAuthFilesFilesPresentation({
       {
         key: "modified",
         label: t("auth_files.file_modified"),
-        width: "w-48",
+        width: "w-36",
         render: (file) => (
           <span className="text-xs tabular-nums text-slate-700 dark:text-white/70">
             {formatModified(file)}
@@ -632,7 +632,7 @@ export function useAuthFilesFilesPresentation({
       {
         key: "connectivity",
         label: t("auth_files.col_connectivity"),
-        width: "w-32",
+        width: "w-28",
         render: (file) => {
           const state = connectivityState.get(file.name);
           return (
@@ -660,7 +660,7 @@ export function useAuthFilesFilesPresentation({
       {
         key: "success",
         label: t("common.success"),
-        width: "w-24",
+        width: "w-20",
         headerClassName: "text-right",
         cellClassName: "text-right",
         render: (file) => {
@@ -675,7 +675,7 @@ export function useAuthFilesFilesPresentation({
       {
         key: "failure",
         label: t("common.failure"),
-        width: "w-24",
+        width: "w-20",
         headerClassName: "text-right",
         cellClassName: "text-right",
         render: (file) => {
@@ -690,7 +690,7 @@ export function useAuthFilesFilesPresentation({
       {
         key: "rate",
         label: t("common.success_rate"),
-        width: "w-64",
+        width: "w-44",
         render: (file) => {
           const statusData = resolveAuthFileStatusBar(file, usageIndex);
           return <ProviderStatusBar data={statusData} compact />;
@@ -699,7 +699,7 @@ export function useAuthFilesFilesPresentation({
       {
         key: "quota",
         label: t("auth_files.col_quota"),
-        width: "w-64",
+        width: "w-52",
         overflowTooltip: false,
         headerClassName: "text-center",
         headerRender: () => (
@@ -787,7 +787,7 @@ export function useAuthFilesFilesPresentation({
       {
         key: "enabled",
         label: t("auth_files.enable"),
-        width: "w-28",
+        width: "w-24",
         headerClassName: "text-center",
         cellClassName: "text-center",
         render: (file) => {
@@ -807,7 +807,7 @@ export function useAuthFilesFilesPresentation({
       {
         key: "actions",
         label: t("common.action"),
-        width: "w-56",
+        width: "w-40",
         headerClassName: "text-center",
         cellClassName: "text-center",
         render: (file) => {

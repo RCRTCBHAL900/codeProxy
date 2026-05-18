@@ -53,6 +53,7 @@ export type AuthFilesModelOwnerGroupMap = Record<string, string>;
 export type AuthFilesUiState = {
   tab?: "files" | "excluded" | "alias";
   filter?: string;
+  tagFilter?: string;
   search?: string;
   page?: number;
 };

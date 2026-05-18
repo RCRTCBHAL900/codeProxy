@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, MemoryRouter, Route, RouterProvider, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ToastProvider } from "@/modules/ui/ToastProvider";
@@ -621,6 +622,97 @@ describe("AuthFilesPage files table", () => {
     expect(within(card as HTMLElement).getByText("vip-team")).toBeInTheDocument();
     expect(within(card as HTMLElement).getAllByText(/^codex$/i)).toHaveLength(1);
     expect(within(card as HTMLElement).queryByText(/^pro$/i)).not.toBeInTheDocument();
+  });
+
+  test("cards view shows the auth-file success rate beside call volume", async () => {
+    window.localStorage.setItem("authFilesPage.filesViewMode.v1", JSON.stringify("cards"));
+    mocks.list.mockImplementation(async () => ({
+      files: [
+        {
+          name: "codex-pro.json",
+          label: "A_GptPro",
+          account_type: "oauth",
+          type: "codex",
+          auth_index: "77",
+          size: 1024,
+          modified: Date.now(),
+          disabled: false,
+        },
+      ],
+    }));
+    mocks.getEntityStats.mockImplementation(async () => ({
+      source: [],
+      auth_index: [
+        { entity_name: "77", requests: 5, failed: 1, avg_latency: 0, total_tokens: 0 },
+      ],
+    }) as any);
+
+    render(
+      <MemoryRouter initialEntries={["/auth-files"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/auth-files" element={<AuthFilesPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    const title = await screen.findByText("A_GptPro");
+    const card = title.closest("section");
+    expect(card).not.toBeNull();
+    expect(within(card as HTMLElement).getByText("5 calls")).toBeInTheDocument();
+    expect(within(card as HTMLElement).getByText("Success Rate")).toBeInTheDocument();
+    expect(within(card as HTMLElement).getByText("80.0%")).toBeInTheDocument();
+  });
+
+  test("filters auth files by custom tag options", async () => {
+    const user = userEvent.setup();
+    mocks.list.mockImplementation(async () => ({
+      files: [
+        {
+          name: "codex-vip.json",
+          type: "codex",
+          size: 1024,
+          modified: Date.now(),
+          disabled: false,
+          custom_tags: ["vip-team"],
+          display_tags: ["vip-team"],
+        },
+        {
+          name: "qwen-lab.json",
+          type: "qwen",
+          size: 1024,
+          modified: Date.now(),
+          disabled: false,
+          custom_tags: ["lab"],
+          display_tags: ["lab"],
+        },
+      ],
+    }));
+
+    render(
+      <MemoryRouter initialEntries={["/auth-files"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/auth-files" element={<AuthFilesPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("codex-vip.json")).toBeInTheDocument();
+    expect(screen.getByText("qwen-lab.json")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("combobox", { name: "Custom tag" }));
+    await user.click(screen.getByRole("option", { name: "vip-team" }));
+
+    expect(screen.getByText("codex-vip.json")).toBeInTheDocument();
+    expect(screen.queryByText("qwen-lab.json")).not.toBeInTheDocument();
+    expect(screen.getByText("Total 1 · Page 1 / 1")).toBeInTheDocument();
   });
 
   test("refreshes only the clicked auth-file card usage stats after quota refresh", async () => {

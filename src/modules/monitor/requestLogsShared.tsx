@@ -222,39 +222,6 @@ export function buildRequestLogsColumns(
       ),
     },
     {
-      key: "apiKeyName",
-      label: t("request_logs.col_key_name"),
-      width: "w-32",
-      render: (row) => (
-        <OverflowTooltip
-          content={
-            row.isSystemCall
-              ? t("request_logs.system_call")
-              : row.apiKeyName || "--"
-          }
-          className="block min-w-0"
-        >
-          <span
-            className={`block min-w-0 truncate text-xs font-medium ${row.apiKeyName || row.isSystemCall ? "text-indigo-600 dark:text-indigo-400" : "text-slate-400 dark:text-white/30"}`}
-          >
-            {row.isSystemCall
-              ? t("request_logs.system_call")
-              : row.apiKeyName || "--"}
-          </span>
-        </OverflowTooltip>
-      ),
-    },
-    {
-      key: "model",
-      label: t("request_logs.col_model"),
-      width: "w-56",
-      render: (row) => (
-        <OverflowTooltip content={row.model} className="block min-w-0">
-          <span className="block min-w-0 truncate">{row.model}</span>
-        </OverflowTooltip>
-      ),
-    },
-    {
       key: "channelName",
       label: t("request_logs.col_channel"),
       width: "w-32",
@@ -429,6 +396,39 @@ export function buildRequestLogsColumns(
           className="block min-w-0"
         >
           <span className="block min-w-0 truncate">${row.cost.toFixed(4)}</span>
+        </OverflowTooltip>
+      ),
+    },
+    {
+      key: "apiKeyName",
+      label: t("request_logs.col_key_name"),
+      width: "w-28",
+      render: (row) => (
+        <OverflowTooltip
+          content={
+            row.isSystemCall
+              ? t("request_logs.system_call")
+              : row.apiKeyName || "--"
+          }
+          className="block min-w-0"
+        >
+          <span
+            className={`block min-w-0 truncate text-xs font-medium ${row.apiKeyName || row.isSystemCall ? "text-indigo-600 dark:text-indigo-400" : "text-slate-400 dark:text-white/30"}`}
+          >
+            {row.isSystemCall
+              ? t("request_logs.system_call")
+              : row.apiKeyName || "--"}
+          </span>
+        </OverflowTooltip>
+      ),
+    },
+    {
+      key: "model",
+      label: t("request_logs.col_model"),
+      width: "w-36",
+      render: (row) => (
+        <OverflowTooltip content={row.model} className="block min-w-0">
+          <span className="block min-w-0 truncate">{row.model}</span>
         </OverflowTooltip>
       ),
     },

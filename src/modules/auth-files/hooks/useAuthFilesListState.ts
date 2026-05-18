@@ -4,6 +4,8 @@ import {
   AUTH_FILES_PAGE_SIZE,
   authFilesSortCollator,
   normalizeProviderKey,
+  normalizeTagValue,
+  readAuthFileCustomTags,
   resolveAuthFileSortKey,
   resolveFileType,
 } from "@/modules/auth-files/helpers/authFilesPageUtils";
@@ -12,6 +14,7 @@ import { isRuntimeOnlyAuthFile } from "@/modules/auth-files/helpers/authFilesPag
 interface UseAuthFilesListStateOptions {
   files: AuthFileItem[];
   filter: string;
+  tagFilter: string;
   search: string;
   page: number;
   setPage: Dispatch<SetStateAction<number>>;
@@ -22,6 +25,7 @@ interface UseAuthFilesListStateOptions {
 export function useAuthFilesListState({
   files,
   filter,
+  tagFilter,
   search,
   page,
   setPage,
@@ -41,7 +45,10 @@ export function useAuthFilesListState({
       const name = String(file.name || "").toLowerCase();
       const provider = String(file.provider || "").toLowerCase();
       const type = String(file.type || "").toLowerCase();
-      return name.includes(q) || provider.includes(q) || type.includes(q);
+      const customTags = readAuthFileCustomTags(file).join(" ").toLowerCase();
+      return (
+        name.includes(q) || provider.includes(q) || type.includes(q) || customTags.includes(q)
+      );
     });
   }, [files, search]);
 
@@ -54,18 +61,37 @@ export function useAuthFilesListState({
     return { total: searchFilteredFiles.length, counts };
   }, [searchFilteredFiles]);
 
-  const filteredFiles = useMemo(() => {
+  const typeFilteredFiles = useMemo(() => {
     const normalizedFilter = normalizeProviderKey(filter);
-    const scoped =
-      !normalizedFilter || normalizedFilter === "all"
-        ? searchFilteredFiles
-        : searchFilteredFiles.filter(
-            (file) => normalizeProviderKey(resolveFileType(file)) === normalizedFilter,
-          );
-    return [...scoped].sort((a, b) =>
+    return !normalizedFilter || normalizedFilter === "all"
+      ? searchFilteredFiles
+      : searchFilteredFiles.filter(
+          (file) => normalizeProviderKey(resolveFileType(file)) === normalizedFilter,
+        );
+  }, [filter, searchFilteredFiles]);
+
+  const customTagOptions = useMemo(() => {
+    const set = new Set<string>();
+    typeFilteredFiles.forEach((file) => {
+      readAuthFileCustomTags(file).forEach((tag) => {
+        const normalized = normalizeTagValue(tag);
+        if (normalized) set.add(normalized);
+      });
+    });
+    return Array.from(set).sort((a, b) => authFilesSortCollator.compare(a, b));
+  }, [typeFilteredFiles]);
+
+  const filteredFiles = useMemo(() => {
+    const normalizedTagFilter = normalizeTagValue(tagFilter);
+    const tagScoped = normalizedTagFilter
+      ? typeFilteredFiles.filter((file) =>
+          readAuthFileCustomTags(file).includes(normalizedTagFilter),
+        )
+      : typeFilteredFiles;
+    return [...tagScoped].sort((a, b) =>
       authFilesSortCollator.compare(resolveAuthFileSortKey(a), resolveAuthFileSortKey(b)),
     );
-  }, [filter, searchFilteredFiles]);
+  }, [tagFilter, typeFilteredFiles]);
 
   const totalPages = Math.max(1, Math.ceil(filteredFiles.length / AUTH_FILES_PAGE_SIZE));
   const safePage = Math.min(totalPages, Math.max(1, page));
@@ -154,6 +180,7 @@ export function useAuthFilesListState({
   return {
     providerOptions,
     filterCounts,
+    customTagOptions,
     filteredFiles,
     totalPages,
     safePage,

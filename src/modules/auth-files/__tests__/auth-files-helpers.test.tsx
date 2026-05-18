@@ -503,6 +503,7 @@ describe("Auth Files helper coverage", () => {
         return useAuthFilesListState({
           files,
           filter: "codex",
+          tagFilter: "",
           search: ".json",
           page,
           setPage,

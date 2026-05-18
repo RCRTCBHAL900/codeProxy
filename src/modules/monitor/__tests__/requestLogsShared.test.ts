@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+  buildRequestLogsColumns,
   buildRequestLogKeyOptions,
   isSystemRequestLogKey,
   SYSTEM_REQUEST_LOG_FILTER_VALUE,
@@ -62,5 +63,17 @@ describe("requestLogsShared", () => {
     expect(options.find((option) => option.label === "Live Key")?.value).toBe(
       "sk-live-123456",
     );
+  });
+
+  test("keeps high-signal request metrics before bulky identifier columns", () => {
+    const columns = buildRequestLogsColumns((key) => key);
+    const keys = columns.map((column) => column.key);
+
+    expect(keys.indexOf("firstToken")).toBeLessThan(keys.indexOf("apiKeyName"));
+    expect(keys.indexOf("inputTokens")).toBeLessThan(keys.indexOf("apiKeyName"));
+    expect(keys.indexOf("cachedTokens")).toBeLessThan(keys.indexOf("model"));
+    expect(keys.indexOf("cost")).toBeLessThan(keys.indexOf("model"));
+    expect(columns.find((column) => column.key === "apiKeyName")?.width).toBe("w-28");
+    expect(columns.find((column) => column.key === "model")?.width).toBe("w-36");
   });
 });
