@@ -78,7 +78,7 @@ export function useAuthFilesQuotaState({
   );
   const [filesViewMode, setFilesViewMode] = useLocalStorage<FilesViewMode>(
     AUTH_FILES_FILES_VIEW_MODE_KEY,
-    "table",
+    "cards",
   );
   const quotaAutoRefreshMs = useMemo(
     () => normalizeQuotaAutoRefreshMs(quotaAutoRefreshMsRaw),
@@ -499,8 +499,8 @@ export function useAuthFilesQuotaState({
 
     const toFetch =
       initialVisibleScope || switchedVisibleScope
-      ? resolveQuotaTargets(pageItems)
-      : collectQuotaFetchTargets(pageItems);
+        ? resolveQuotaTargets(pageItems)
+        : collectQuotaFetchTargets(pageItems);
     if (!toFetch.length) return;
 
     if (initialVisibleScope || switchedVisibleScope) {

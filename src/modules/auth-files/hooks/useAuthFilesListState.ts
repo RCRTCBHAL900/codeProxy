@@ -2,12 +2,15 @@ import { useCallback, useEffect, useMemo, type Dispatch, type SetStateAction } f
 import type { AuthFileItem } from "@/lib/http/types";
 import {
   AUTH_FILES_PAGE_SIZE,
+  authFileMatchesStatusFilter,
   authFilesSortCollator,
   normalizeProviderKey,
   normalizeTagValue,
   readAuthFileCustomTags,
+  resolveAuthFileStatusBuckets,
   resolveAuthFileSortKey,
   resolveFileType,
+  type AuthFileStatusFilter,
 } from "@/modules/auth-files/helpers/authFilesPageUtils";
 import { isRuntimeOnlyAuthFile } from "@/modules/auth-files/helpers/authFilesPageUtils";
 
@@ -15,6 +18,7 @@ interface UseAuthFilesListStateOptions {
   files: AuthFileItem[];
   filter: string;
   tagFilter: string;
+  statusFilter: AuthFileStatusFilter;
   search: string;
   page: number;
   setPage: Dispatch<SetStateAction<number>>;
@@ -26,6 +30,7 @@ export function useAuthFilesListState({
   files,
   filter,
   tagFilter,
+  statusFilter,
   search,
   page,
   setPage,
@@ -46,9 +51,7 @@ export function useAuthFilesListState({
       const provider = String(file.provider || "").toLowerCase();
       const type = String(file.type || "").toLowerCase();
       const customTags = readAuthFileCustomTags(file).join(" ").toLowerCase();
-      return (
-        name.includes(q) || provider.includes(q) || type.includes(q) || customTags.includes(q)
-      );
+      return name.includes(q) || provider.includes(q) || type.includes(q) || customTags.includes(q);
     });
   }, [files, search]);
 
@@ -81,17 +84,35 @@ export function useAuthFilesListState({
     return Array.from(set).sort((a, b) => authFilesSortCollator.compare(a, b));
   }, [typeFilteredFiles]);
 
-  const filteredFiles = useMemo(() => {
+  const tagScopedFiles = useMemo(() => {
     const normalizedTagFilter = normalizeTagValue(tagFilter);
-    const tagScoped = normalizedTagFilter
+    return normalizedTagFilter
       ? typeFilteredFiles.filter((file) =>
           readAuthFileCustomTags(file).includes(normalizedTagFilter),
         )
       : typeFilteredFiles;
-    return [...tagScoped].sort((a, b) =>
+  }, [tagFilter, typeFilteredFiles]);
+
+  const statusFilterCounts = useMemo(() => {
+    const counts: Partial<Record<AuthFileStatusFilter, number>> = {
+      all: tagScopedFiles.length,
+    };
+    tagScopedFiles.forEach((file) => {
+      resolveAuthFileStatusBuckets(file).forEach((bucket) => {
+        counts[bucket] = (counts[bucket] ?? 0) + 1;
+      });
+    });
+    return counts;
+  }, [tagScopedFiles]);
+
+  const filteredFiles = useMemo(() => {
+    const statusScoped = tagScopedFiles.filter((file) =>
+      authFileMatchesStatusFilter(file, statusFilter),
+    );
+    return [...statusScoped].sort((a, b) =>
       authFilesSortCollator.compare(resolveAuthFileSortKey(a), resolveAuthFileSortKey(b)),
     );
-  }, [tagFilter, typeFilteredFiles]);
+  }, [statusFilter, tagScopedFiles]);
 
   const totalPages = Math.max(1, Math.ceil(filteredFiles.length / AUTH_FILES_PAGE_SIZE));
   const safePage = Math.min(totalPages, Math.max(1, page));
@@ -181,6 +202,7 @@ export function useAuthFilesListState({
     providerOptions,
     filterCounts,
     customTagOptions,
+    statusFilterCounts,
     filteredFiles,
     totalPages,
     safePage,

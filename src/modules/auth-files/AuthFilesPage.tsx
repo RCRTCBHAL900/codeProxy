@@ -27,6 +27,7 @@ import { useAuthFilesGroupOverview } from "@/modules/auth-files/hooks/useAuthFil
 import { useAuthFilesOAuthConfig } from "@/modules/auth-files/hooks/useAuthFilesOAuthConfig";
 import { resolveQuotaProvider } from "@/modules/quota/quota-fetch";
 import {
+  AUTH_FILE_STATUS_FILTERS,
   normalizeProviderKey,
   normalizeQuotaAutoRefreshMs,
   readAuthFilesUiState,
@@ -34,6 +35,7 @@ import {
   resolveFileType,
   resolveProviderLabel,
   writeAuthFilesUiState,
+  type AuthFileStatusFilter,
   type OAuthDialogTab,
 } from "@/modules/auth-files/helpers/authFilesPageUtils";
 
@@ -130,6 +132,7 @@ export function AuthFilesPage() {
 
   const [filter, setFilter] = useState("all");
   const [tagFilter, setTagFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<AuthFileStatusFilter>("all");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [selectedFileNames, setSelectedFileNames] = useState<string[]>([]);
@@ -248,6 +251,12 @@ export function AuthFilesPage() {
     if (state.tab) setTab(state.tab);
     if (typeof state.filter === "string") setFilter(state.filter);
     if (typeof state.tagFilter === "string") setTagFilter(state.tagFilter);
+    if (
+      typeof state.statusFilter === "string" &&
+      AUTH_FILE_STATUS_FILTERS.includes(state.statusFilter)
+    ) {
+      setStatusFilter(state.statusFilter);
+    }
     if (typeof state.search === "string") setSearch(state.search);
     if (typeof state.page === "number" && Number.isFinite(state.page))
       setPage(Math.max(1, Math.round(state.page)));
@@ -268,8 +277,8 @@ export function AuthFilesPage() {
   }, []);
 
   useEffect(() => {
-    writeAuthFilesUiState({ tab, filter, tagFilter, search, page });
-  }, [filter, page, search, tab, tagFilter]);
+    writeAuthFilesUiState({ tab, filter, tagFilter, statusFilter, search, page });
+  }, [filter, page, search, statusFilter, tab, tagFilter]);
 
   useEffect(() => {
     if (tab !== "files") return;
@@ -291,10 +300,16 @@ export function AuthFilesPage() {
     setPage(1);
   }, []);
 
+  const updateStatusFilter = useCallback((value: AuthFileStatusFilter) => {
+    setStatusFilter(value);
+    setPage(1);
+  }, []);
+
   const {
     providerOptions,
     filterCounts,
     customTagOptions,
+    statusFilterCounts,
     filteredFiles,
     totalPages,
     safePage,
@@ -313,6 +328,7 @@ export function AuthFilesPage() {
     files,
     filter,
     tagFilter,
+    statusFilter,
     search,
     page,
     setPage,
@@ -339,9 +355,14 @@ export function AuthFilesPage() {
   } = useAuthFilesQuotaState({
     tab,
     pageItems,
-    visibleScopeKey: [filter, tagFilter, search, safePage, ...pageItems.map((file) => file.name)].join(
-      "\n",
-    ),
+    visibleScopeKey: [
+      filter,
+      tagFilter,
+      statusFilter,
+      search,
+      safePage,
+      ...pageItems.map((file) => file.name),
+    ].join("\n"),
     navigationType,
     loading,
     setFiles,
@@ -525,6 +546,9 @@ export function AuthFilesPage() {
             tagFilter={tagFilter}
             setTagFilter={updateTagFilter}
             customTagOptions={customTagOptions}
+            statusFilter={statusFilter}
+            setStatusFilter={updateStatusFilter}
+            statusFilterCounts={statusFilterCounts}
             modelOwnerGroupsLoading={modelOwnerGroupsLoading}
             modelOwnerGroups={modelOwnerGroups}
             selectedModelOwner={selectedModelOwner}

@@ -122,6 +122,10 @@ function createDeferred<T>() {
   return { promise, resolve, reject };
 }
 
+const useTableFilesView = () => {
+  window.localStorage.setItem("authFilesPage.filesViewMode.v1", JSON.stringify("table"));
+};
+
 describe("AuthFilesPage files table", () => {
   beforeEach(async () => {
     await i18n.changeLanguage("en");
@@ -200,7 +204,7 @@ describe("AuthFilesPage files table", () => {
     window.sessionStorage.clear();
   });
 
-  test("renders VirtualTable for auth files and keeps actions available", async () => {
+  test("defaults to card view for auth files and keeps actions available", async () => {
     render(
       <MemoryRouter initialEntries={["/auth-files"]}>
         <ThemeProvider>
@@ -214,15 +218,96 @@ describe("AuthFilesPage files table", () => {
     );
 
     expect(await screen.findByText("qwen.json")).toBeInTheDocument();
-    expect(screen.getByRole("table")).toBeInTheDocument();
-    expect(screen.getByText("Quota")).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Quota" })).toBeInTheDocument();
-    expect(screen.getByText("5h")).toBeInTheDocument();
+    expect(screen.getByTestId("auth-files-cards")).toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Status" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add OAuth Login" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Selection actions" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Select current page" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Delete All" })).not.toBeInTheDocument();
     expect(screen.getByRole("switch", { name: "Enable/Disable" })).toBeInTheDocument();
+  });
+
+  test("filters auth file cards by status buckets", async () => {
+    const user = userEvent.setup();
+    const now = Date.now();
+    mocks.list.mockImplementation(async () => ({
+      files: [
+        {
+          name: "codex-limited.json",
+          type: "codex",
+          size: 1024,
+          modified: now,
+          disabled: false,
+          restrictions: [
+            {
+              scope: "auth",
+              http_status: 429,
+              quota_exceeded: true,
+              status: "error",
+              status_message: "usage limit",
+            },
+          ],
+        },
+        {
+          name: "codex-other-error.json",
+          type: "codex",
+          size: 1024,
+          modified: now,
+          disabled: false,
+          status: "error",
+          status_message: "bad token",
+          unavailable: true,
+        },
+        {
+          name: "codex-disabled.json",
+          type: "codex",
+          size: 1024,
+          modified: now,
+          disabled: true,
+        },
+        {
+          name: "qwen-ok.json",
+          type: "qwen",
+          size: 1024,
+          modified: now,
+          disabled: false,
+        },
+      ],
+    }));
+
+    render(
+      <MemoryRouter initialEntries={["/auth-files"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/auth-files" element={<AuthFilesPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("codex-limited.json")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("combobox", { name: "Status" }));
+    expect(screen.getByRole("option", { name: /429/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Other errors/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Disabled/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: /429/ }));
+
+    expect(screen.getByText("codex-limited.json")).toBeInTheDocument();
+    expect(screen.queryByText("codex-other-error.json")).not.toBeInTheDocument();
+    expect(screen.queryByText("codex-disabled.json")).not.toBeInTheDocument();
+    expect(screen.queryByText("qwen-ok.json")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("combobox", { name: "Status" }));
+    await user.click(screen.getByRole("option", { name: /Other errors/ }));
+
+    expect(screen.queryByText("codex-limited.json")).not.toBeInTheDocument();
+    expect(screen.getByText("codex-other-error.json")).toBeInTheDocument();
+    expect(screen.queryByText("codex-disabled.json")).not.toBeInTheDocument();
+    expect(screen.queryByText("qwen-ok.json")).not.toBeInTheDocument();
   });
 
   test("keeps bulk selection collapsed until files are selected", async () => {
@@ -392,6 +477,7 @@ describe("AuthFilesPage files table", () => {
   });
 
   test("keeps table action buttons on a single row", async () => {
+    useTableFilesView();
     mocks.list.mockImplementation(async () => ({
       files: [
         {
@@ -517,6 +603,7 @@ describe("AuthFilesPage files table", () => {
   });
 
   test("hides model-scoped transport errors from table restriction badges", async () => {
+    useTableFilesView();
     vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(80);
     vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(640);
 
@@ -893,6 +980,7 @@ describe("AuthFilesPage files table", () => {
   });
 
   test("reads quota preview setting from localStorage", async () => {
+    useTableFilesView();
     window.localStorage.setItem("authFilesPage.quotaPreview.v1", JSON.stringify("week"));
 
     render(
@@ -1466,6 +1554,7 @@ describe("AuthFilesPage files table", () => {
   });
 
   test("table view hides default auth-file badges when display tags are empty", async () => {
+    useTableFilesView();
     mocks.list.mockImplementation(async () => ({
       files: [
         {
@@ -1682,6 +1771,7 @@ describe("AuthFilesPage files table", () => {
   });
 
   test("shows derived subscription days remaining in table and cards", async () => {
+    useTableFilesView();
     const expiresAt = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
     const startedAt = new Date(expiresAt);
     startedAt.setFullYear(startedAt.getFullYear() - 1);
@@ -2359,6 +2449,7 @@ describe("AuthFilesPage files table", () => {
   });
 
   test("table quota hover does not show cached antigravity model metadata", async () => {
+    useTableFilesView();
     const now = Date.now();
     const file = {
       name: "antigravity.json",
@@ -2429,6 +2520,7 @@ describe("AuthFilesPage files table", () => {
   });
 
   test("table quota hover opens only the quota details tooltip", async () => {
+    useTableFilesView();
     vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(80);
     vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(320);
 
@@ -2511,6 +2603,8 @@ describe("AuthFilesPage files table", () => {
   });
 
   test("table quota preview and hover hide cached antigravity models skipped by the reference implementation", async () => {
+    useTableFilesView();
+
     const now = Date.now();
     const file = {
       name: "antigravity.json",
@@ -2839,6 +2933,7 @@ describe("AuthFilesPage files table", () => {
   });
 
   test("toolbar refresh immediately spins the visible table quota refresh action", async () => {
+    useTableFilesView();
     const now = Date.now();
     const file = {
       name: "codex-table.json",
@@ -3063,6 +3158,7 @@ describe("AuthFilesPage files table", () => {
   });
 
   test("table refresh action only refreshes the clicked auth file", async () => {
+    useTableFilesView();
     const now = Date.now();
     const files = [
       {
@@ -3426,6 +3522,7 @@ describe("AuthFilesPage files table", () => {
   });
 
   test("table preview and hover mark depleted codex quotas red", async () => {
+    useTableFilesView();
     const now = Date.now();
     const file = {
       name: "codex-table.json",

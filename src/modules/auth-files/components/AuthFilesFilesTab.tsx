@@ -30,12 +30,14 @@ import { VirtualTable, type VirtualTableColumn } from "@/modules/ui/VirtualTable
 import { ToggleSwitch } from "@/modules/ui/ToggleSwitch";
 import type {
   AuthFileModelOwnerGroup,
+  AuthFileStatusFilter,
   FilesViewMode,
   OAuthDialogTab,
   QuotaAutoRefreshMs,
   UsageIndex,
 } from "@/modules/auth-files/helpers/authFilesPageUtils";
 import {
+  AUTH_FILE_STATUS_FILTERS,
   TYPE_BADGE_CLASSES,
   isRuntimeOnlyAuthFile,
   normalizeProviderKey,
@@ -198,6 +200,9 @@ interface AuthFilesFilesTabProps {
   tagFilter: string;
   setTagFilter: (value: string) => void;
   customTagOptions: string[];
+  statusFilter: AuthFileStatusFilter;
+  setStatusFilter: (value: AuthFileStatusFilter) => void;
+  statusFilterCounts: Partial<Record<AuthFileStatusFilter, number>>;
   modelOwnerGroupsLoading: boolean;
   modelOwnerGroups: AuthFileModelOwnerGroup[];
   selectedModelOwner: string;
@@ -274,6 +279,9 @@ export function AuthFilesFilesTab({
   tagFilter,
   setTagFilter,
   customTagOptions,
+  statusFilter,
+  setStatusFilter,
+  statusFilterCounts,
   modelOwnerGroupsLoading,
   modelOwnerGroups,
   selectedModelOwner,
@@ -374,6 +382,29 @@ export function AuthFilesFilesTab({
       })),
     ],
     [customTagOptions, t],
+  );
+  const statusFilterOptions = useMemo(
+    () =>
+      AUTH_FILE_STATUS_FILTERS.filter((value) => {
+        if (value === "all" || value === statusFilter) return true;
+        return (statusFilterCounts[value] ?? 0) > 0;
+      }).map((value) => {
+        const count = statusFilterCounts[value] ?? 0;
+        const label = t(`auth_files.status_filter_${value}`);
+        return {
+          value,
+          label: (
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="min-w-0 truncate">{label}</span>
+              <span className="ml-auto inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-slate-100 px-1 text-[10px] font-semibold tabular-nums text-slate-700 dark:bg-white/10 dark:text-white/70">
+                {count}
+              </span>
+            </span>
+          ),
+          triggerLabel: `${label} (${count})`,
+        };
+      }),
+    [statusFilter, statusFilterCounts, t],
   );
 
   useEffect(() => {
@@ -508,6 +539,21 @@ export function AuthFilesFilesTab({
                   />
                 </div>
               ) : null}
+
+              <div className="w-full max-w-[180px] space-y-1.5">
+                <p className="text-[11px] font-semibold text-slate-600 dark:text-white/65">
+                  {t("auth_files.status_filter")}
+                </p>
+                <Select
+                  value={statusFilter}
+                  onChange={(value) => setStatusFilter(value as AuthFileStatusFilter)}
+                  options={statusFilterOptions}
+                  placeholder={t("auth_files.status_filter")}
+                  aria-label={t("auth_files.status_filter")}
+                  disabled={statusFilterOptions.length <= 1 && statusFilter === "all"}
+                  className="h-9"
+                />
+              </div>
 
               <div className="w-full max-w-[560px] space-y-1.5">
                 <p className="text-[11px] font-semibold text-slate-600 dark:text-white/65">

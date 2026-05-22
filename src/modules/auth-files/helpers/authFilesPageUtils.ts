@@ -49,11 +49,28 @@ export type QuotaPreviewMode = "5h" | "week";
 export type QuotaAutoRefreshMs = 0 | 5000 | 10000 | 30000 | 60000;
 export type FilesViewMode = "table" | "cards";
 export type AuthFilesModelOwnerGroupMap = Record<string, string>;
+export type AuthFileStatusFilter =
+  | "all"
+  | "http-429"
+  | "http-auth"
+  | "http-5xx"
+  | "other-error"
+  | "disabled";
+
+export const AUTH_FILE_STATUS_FILTERS: AuthFileStatusFilter[] = [
+  "all",
+  "http-429",
+  "http-auth",
+  "http-5xx",
+  "other-error",
+  "disabled",
+];
 
 export type AuthFilesUiState = {
   tab?: "files" | "excluded" | "alias";
   filter?: string;
   tagFilter?: string;
+  statusFilter?: AuthFileStatusFilter;
   search?: string;
   page?: number;
 };
@@ -86,8 +103,7 @@ const sanitizeAuthFileRestrictionsForCache = (
       const httpStatus = Number(record.http_status);
       const code = typeof record.code === "string" ? record.code : undefined;
       const reason = typeof record.reason === "string" ? record.reason : undefined;
-      const quotaWindow =
-        typeof record.quota_window === "string" ? record.quota_window : undefined;
+      const quotaWindow = typeof record.quota_window === "string" ? record.quota_window : undefined;
       const quotaWindowMinutes = Number(record.quota_window_minutes);
       const nextRetryAfter =
         typeof record.next_retry_after === "string" || typeof record.next_retry_after === "number"
@@ -399,6 +415,62 @@ const isLegacyAuthRestrictionActive = (file: AuthFileItem): boolean => {
   const status = normalizeTagValue(file.status);
   if (status === "error") return true;
   return parseDateLikeMs(file.next_retry_after) !== null;
+};
+
+const getAuthLevelRestrictions = (file: AuthFileItem): AuthFileRestriction[] =>
+  (Array.isArray(file.restrictions) ? file.restrictions : []).filter(
+    (restriction) => normalizeTagValue(restriction.scope) !== "model",
+  );
+
+const readRestrictionHttpStatus = (restriction: AuthFileRestriction): number | null => {
+  const status = Number(restriction.http_status);
+  return Number.isFinite(status) && status > 0 ? Math.round(status) : null;
+};
+
+const hasRestrictionErrorSignal = (restriction: AuthFileRestriction): boolean => {
+  if (readRestrictionHttpStatus(restriction) !== null) return true;
+  if (restriction.unavailable === true || restriction.quota_exceeded === true) return true;
+  if (normalizeTagValue(restriction.status) === "error") return true;
+  return Boolean(
+    String(restriction.reason ?? restriction.code ?? restriction.status_message ?? "").trim(),
+  );
+};
+
+export const resolveAuthFileStatusBuckets = (file: AuthFileItem): Set<AuthFileStatusFilter> => {
+  const buckets = new Set<AuthFileStatusFilter>();
+  if (file.disabled === true) buckets.add("disabled");
+
+  const restrictions = getAuthLevelRestrictions(file);
+  const statuses = restrictions
+    .map(readRestrictionHttpStatus)
+    .filter((status): status is number => status !== null);
+
+  const has429 = statuses.includes(429);
+  const hasAuthError = statuses.some((status) => status === 401 || status === 403);
+  const hasServerError = statuses.some((status) => status >= 500);
+  const hasOtherHttpError = statuses.some(
+    (status) => status !== 429 && status !== 401 && status !== 403 && status < 500,
+  );
+
+  if (has429) buckets.add("http-429");
+  if (hasAuthError) buckets.add("http-auth");
+  if (hasServerError) buckets.add("http-5xx");
+
+  const hasErrorSignal =
+    isLegacyAuthRestrictionActive(file) || restrictions.some(hasRestrictionErrorSignal);
+  if (hasErrorSignal && ((!has429 && !hasAuthError && !hasServerError) || hasOtherHttpError)) {
+    buckets.add("other-error");
+  }
+
+  return buckets;
+};
+
+export const authFileMatchesStatusFilter = (
+  file: AuthFileItem,
+  statusFilter: AuthFileStatusFilter,
+): boolean => {
+  if (statusFilter === "all") return true;
+  return resolveAuthFileStatusBuckets(file).has(statusFilter);
 };
 
 export const formatAuthFileRestrictionRemaining = (
