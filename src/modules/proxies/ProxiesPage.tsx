@@ -297,7 +297,11 @@ export function ProxiesPage() {
                 disabled={result?.checking}
                 size="xs"
               >
-                {result?.checking ? <RefreshCw size={14} /> : <CheckCircle2 size={14} />}
+                {result?.checking ? (
+                  <RefreshCw size={14} className="animate-spin" />
+                ) : (
+                  <CheckCircle2 size={14} />
+                )}
               </Button>
               <Button
                 aria-label={t("proxies.edit_label", { name: entry.name })}

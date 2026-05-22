@@ -134,6 +134,33 @@ describe("ProxiesPage", () => {
     expect(await screen.findByText(/44 ms/i)).toBeInTheDocument();
   });
 
+  test("spins the row refresh icon while a proxy check is in progress", async () => {
+    let resolveNextCheck: ((value: unknown) => void) | undefined;
+    mocks.apiPost
+      .mockResolvedValueOnce({ ok: true, status_code: 204, latency_ms: 31 })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveNextCheck = resolve;
+          }),
+      );
+
+    renderPage();
+
+    expect(await screen.findByText(/31 ms/i)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /^refresh$/i }));
+
+    await waitFor(() => {
+      const button = screen.getByRole("button", { name: /check hk proxy/i });
+      expect(button.querySelector("svg")).toHaveClass("animate-spin");
+    });
+
+    resolveNextCheck?.({ ok: true, status_code: 204, latency_ms: 44 });
+
+    expect(await screen.findByText(/44 ms/i)).toBeInTheDocument();
+  });
+
   test("renders cached check results on page entry while refreshing them in the background", async () => {
     let resolveNextCheck: ((value: unknown) => void) | undefined;
     window.sessionStorage.setItem(
