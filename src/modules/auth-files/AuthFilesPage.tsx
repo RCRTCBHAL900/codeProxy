@@ -135,6 +135,9 @@ export function AuthFilesPage() {
   const [selectedFileNames, setSelectedFileNames] = useState<string[]>([]);
   const [proxyPoolEntries, setProxyPoolEntries] = useState<ProxyPoolEntry[]>([]);
   const [tagsEditorFileName, setTagsEditorFileName] = useState<string | null>(null);
+  const [refreshingCurrentPage, setRefreshingCurrentPage] = useState(false);
+  const isMountedRef = useRef(true);
+  const refreshingFilesAndQuotaRef = useRef(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const filesRef = useRef<AuthFileItem[]>(files);
@@ -144,6 +147,12 @@ export function AuthFilesPage() {
   useEffect(() => {
     filesRef.current = files;
   }, [files]);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const setOAuthDialogOpenWithBaseline = useCallback((open: boolean) => {
     if (open) {
@@ -393,11 +402,21 @@ export function AuthFilesPage() {
   );
 
   const refreshFilesAndQuota = useCallback(async () => {
+    if (refreshingFilesAndQuotaRef.current || loading || usageLoading || refreshingAll) return;
+    refreshingFilesAndQuotaRef.current = true;
+    setRefreshingCurrentPage(true);
     const currentPageItems = pageItems;
-    const quotaRefreshPromise = forceRefreshPage();
-    const filesRefreshPromise = refreshFilesForItems(currentPageItems);
-    await Promise.all([filesRefreshPromise, quotaRefreshPromise]);
-  }, [forceRefreshPage, pageItems, refreshFilesForItems]);
+    try {
+      const quotaRefreshPromise = forceRefreshPage();
+      const filesRefreshPromise = refreshFilesForItems(currentPageItems);
+      await Promise.all([filesRefreshPromise, quotaRefreshPromise]);
+    } finally {
+      refreshingFilesAndQuotaRef.current = false;
+      if (isMountedRef.current) {
+        setRefreshingCurrentPage(false);
+      }
+    }
+  }, [forceRefreshPage, loading, pageItems, refreshFilesForItems, refreshingAll, usageLoading]);
 
   useEffect(() => {
     const previousTab = previousTabRef.current;
@@ -524,7 +543,7 @@ export function AuthFilesPage() {
             filteredFiles={filteredFiles}
             refreshFilesAndQuota={refreshFilesAndQuota}
             usageLoading={usageLoading}
-            refreshingAll={refreshingAll}
+            refreshingAll={refreshingAll || refreshingCurrentPage}
             uploading={uploading}
             setOauthDialogDefaultTab={setOauthDialogDefaultTab}
             setOauthDialogOpen={setOAuthDialogOpenWithBaseline}

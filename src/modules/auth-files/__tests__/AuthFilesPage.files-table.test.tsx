@@ -32,6 +32,7 @@ const mocks = vi.hoisted(() => ({
     group: "all",
     points: [{ date: new Date().toISOString().slice(0, 10), requests: 9 }],
   })),
+  recordAuthFileQuotaSnapshot: vi.fn(async () => ({})),
   fetchQuota: vi.fn((_provider?: unknown, _file?: { name?: string }) => new Promise(() => {})),
   deleteFile: vi.fn(async () => ({})),
   downloadText: vi.fn(async () => "{}"),
@@ -82,6 +83,7 @@ vi.mock("@/lib/http/apis", async (importOriginal) => {
       getEntityStats: mocks.getEntityStats,
       getUsageLogs: mocks.getUsageLogs,
       getAuthFileGroupTrend: mocks.getAuthFileGroupTrend,
+      recordAuthFileQuotaSnapshot: mocks.recordAuthFileQuotaSnapshot,
     },
   };
 });
@@ -152,6 +154,8 @@ describe("AuthFilesPage files table", () => {
       group: "all",
       points: [{ date: new Date().toISOString().slice(0, 10), requests: 9 }],
     }));
+    mocks.recordAuthFileQuotaSnapshot.mockReset();
+    mocks.recordAuthFileQuotaSnapshot.mockImplementation(async () => ({}));
     mocks.fetchQuota.mockReset();
     mocks.fetchQuota.mockImplementation(() => new Promise(() => {}));
     mocks.deleteFile.mockReset();
@@ -1163,6 +1167,101 @@ describe("AuthFilesPage files table", () => {
       expect(within(otherCard as HTMLElement).getByText("10 calls")).toBeInTheDocument();
       expect(within(otherCard as HTMLElement).queryByText("99 calls")).not.toBeInTheDocument();
     });
+  });
+
+  test("keeps the refresh button spinning and refreshes auth files in batches of two", async () => {
+    const now = Date.now();
+    const files = Array.from({ length: 9 }, (_, index) => ({
+      name: `codex-${index + 1}.json`,
+      type: "codex",
+      provider: "codex",
+      account_type: "oauth",
+      chatgpt_account_id: `acct-${index + 1}`,
+      size: 1024,
+      modified: now,
+      disabled: false,
+    }));
+    type QuotaRefreshDeferred = {
+      promise: Promise<{ items: Array<{ label: string; percent: number }> }>;
+      resolve: (value: { items: Array<{ label: string; percent: number }> }) => void;
+      reject: (reason?: unknown) => void;
+    };
+    const deferredQueue = Array.from({ length: files.length }, () =>
+      createDeferred<{ items: Array<{ label: string; percent: number }> }>(),
+    );
+    const startedDeferreds: QuotaRefreshDeferred[] = [];
+    let activeFetches = 0;
+    let maxActiveFetches = 0;
+
+    window.localStorage.setItem(AUTH_FILES_QUOTA_AUTO_REFRESH_KEY, JSON.stringify(0));
+    window.sessionStorage.setItem(
+      AUTH_FILES_DATA_CACHE_KEY,
+      JSON.stringify({
+        savedAtMs: now,
+        files,
+        usageData: { source: [], auth_index: [] },
+        quotaByFileName: Object.fromEntries(
+          files.map((file) => [
+            file.name,
+            {
+              status: "success",
+              updatedAt: now,
+              items: [{ label: "m_quota.code_5h", percent: 22 }],
+            },
+          ]),
+        ),
+      }),
+    );
+
+    mocks.list.mockImplementation(async () => ({ files }));
+    mocks.fetchQuota.mockImplementation(() => {
+      const deferred = deferredQueue.shift();
+      if (!deferred) throw new Error("unexpected fetchQuota call");
+      startedDeferreds.push(deferred);
+      activeFetches += 1;
+      maxActiveFetches = Math.max(maxActiveFetches, activeFetches);
+      return deferred.promise.finally(() => {
+        activeFetches -= 1;
+      });
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/auth-files"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/auth-files" element={<AuthFilesPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("codex-1.json")).toBeInTheDocument();
+    const refreshButton = screen.getAllByRole("button", { name: "Refresh" })[0];
+    expect(refreshButton).toBeEnabled();
+
+    fireEvent.click(refreshButton);
+
+    await waitFor(() => expect(mocks.fetchQuota).toHaveBeenCalledTimes(2));
+    expect(refreshButton.querySelector("svg")).toHaveClass("animate-spin");
+    expect(maxActiveFetches).toBe(2);
+
+    for (let index = 0; index < files.length; index += 2) {
+      const batch = startedDeferreds.slice(index, index + 2);
+      await act(async () => {
+        batch.forEach((deferred) =>
+          deferred.resolve({ items: [{ label: "m_quota.code_5h", percent: 60 }] }),
+        );
+      });
+
+      await waitFor(() =>
+        expect(mocks.fetchQuota).toHaveBeenCalledTimes(Math.min(files.length, index + 4)),
+      );
+    }
+
+    await waitFor(() => expect(refreshButton.querySelector("svg")).not.toHaveClass("animate-spin"));
+    expect(maxActiveFetches).toBeLessThanOrEqual(2);
   });
 
   test("switching to all refreshes the visible page even when file names stay the same", async () => {

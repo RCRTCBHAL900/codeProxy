@@ -455,15 +455,11 @@ export function useAuthFilesQuotaState({
       if (!targets.length) return;
 
       const markAsAutoRefreshing = Boolean(options?.markAsAutoRefreshing);
-      const concurrency = 3;
-      let index = 0;
 
-      const workers = Array.from({ length: Math.min(concurrency, targets.length) }).map(
-        async () => {
-          for (;;) {
-            const current = targets[index];
-            index += 1;
-            if (!current) return;
+      for (let index = 0; index < targets.length; index += 2) {
+        const batch = targets.slice(index, index + 2);
+        await Promise.allSettled(
+          batch.map(async (current) => {
             quotaWarmupAttemptRef.current.set(current.file.name, Date.now());
             if (markAsAutoRefreshing) {
               quotaAutoRefreshingRef.current.add(current.file.name);
@@ -478,11 +474,10 @@ export function useAuthFilesQuotaState({
                 quotaAutoRefreshingRef.current.delete(current.file.name);
               }
             }
-          }
-        },
-      );
+          }),
+        );
+      }
 
-      await Promise.allSettled(workers);
       if (options?.refreshUsage !== false) {
         await refreshUsageDataAfterQuota(targets.map((target) => target.file));
       }
