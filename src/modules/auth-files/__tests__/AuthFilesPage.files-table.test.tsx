@@ -485,8 +485,8 @@ describe("AuthFilesPage files table", () => {
     await waitFor(() => expect(mocks.upload).toHaveBeenCalledTimes(2));
     const uploadCalls = mocks.upload.mock.calls as unknown as [[File], [File]];
     expect(uploadCalls.map(([file]) => file.name)).toEqual([
-      "codex-acct-111.json",
-      "codex-acct-222.json",
+      "codex-alpha@example.test-plus.json",
+      "codex-beta@example.test-plus.json",
     ]);
 
     const uploadedJson = await Promise.all(
@@ -551,6 +551,121 @@ describe("AuthFilesPage files table", () => {
     await waitFor(() =>
       expect(screen.queryByRole("dialog", { name: "Paste Auth JSON" })).not.toBeInTheDocument(),
     );
+  });
+
+  test("skips duplicate codex accounts that are already in the list or repeated in the pasted bundle", async () => {
+    const existingAlpha = {
+      name: "codex-alpha@example.test-plus.json",
+      type: "codex",
+      provider: "codex",
+      account_type: "oauth",
+      email: "alpha@example.test",
+      label: "alpha@example.test",
+      account_id: "acct-111",
+      chatgpt_account_id: "acct-111",
+      auth_index: "auth-alpha",
+      size: 1024,
+      modified: Date.now(),
+      disabled: false,
+    };
+    mocks.list.mockImplementation(async () => ({
+      files: [
+        {
+          name: "qwen.json",
+          type: "qwen",
+          size: 1024,
+          modified: Date.now(),
+          disabled: false,
+        },
+        existingAlpha,
+      ],
+    }));
+
+    render(
+      <MemoryRouter initialEntries={["/auth-files"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/auth-files" element={<AuthFilesPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("qwen.json")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Paste JSON" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Paste Auth JSON" });
+    fireEvent.change(within(dialog).getByLabelText("Auth file JSON"), {
+      target: {
+        value: [
+          "=== 卡密内容 ===",
+          JSON.stringify({
+            exported_at: "2026-05-22T20:11:27.181Z",
+            proxies: [],
+            accounts: [
+              {
+                name: "alpha@example.test",
+                platform: "openai",
+                type: "oauth",
+                credentials: {
+                  access_token: "access-token-one",
+                  chatgpt_account_id: "acct-111",
+                  chatgpt_user_id: "user-111",
+                  email: "alpha@example.test",
+                  expires_at: "2026-06-01T17:08:08.000Z",
+                  plan_type: "plus",
+                },
+                extra: {
+                  email: "alpha@example.test",
+                  last_refresh: "2026-05-22T20:11:27.181Z",
+                },
+              },
+              {
+                name: "beta@example.test",
+                platform: "openai",
+                type: "oauth",
+                credentials: {
+                  access_token: "access-token-two",
+                  chatgpt_account_id: "acct-222",
+                  chatgpt_user_id: "user-222",
+                  email: "beta@example.test",
+                  expires_at: "2026-06-01T17:08:08.000Z",
+                  plan_type: "plus",
+                },
+                extra: {
+                  email: "beta@example.test",
+                  last_refresh: "2026-05-22T20:11:27.181Z",
+                },
+              },
+              {
+                name: "alpha@example.test",
+                platform: "openai",
+                type: "oauth",
+                credentials: {
+                  access_token: "access-token-three",
+                  chatgpt_account_id: "acct-111",
+                  chatgpt_user_id: "user-111",
+                  email: "alpha@example.test",
+                  expires_at: "2026-06-01T17:08:08.000Z",
+                  plan_type: "plus",
+                },
+                extra: {
+                  email: "alpha@example.test",
+                  last_refresh: "2026-05-22T20:11:27.181Z",
+                },
+              },
+            ],
+          }),
+        ].join("\n"),
+      },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Upload JSON" }));
+
+    await waitFor(() => expect(mocks.upload).toHaveBeenCalledTimes(1));
+    const uploadCalls = mocks.upload.mock.calls as unknown as [[File]];
+    expect(uploadCalls.map(([file]) => file.name)).toEqual(["codex-beta@example.test-plus.json"]);
   });
 
   test("refreshes pasted auth files and quotas from the latest uploaded list", async () => {

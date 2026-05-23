@@ -48,7 +48,11 @@ import {
   resolveFileType,
   shouldShowAuthFileDisplayTag,
 } from "@/modules/auth-files/helpers/authFilesPageUtils";
-import type { QuotaItem, QuotaState } from "@/modules/quota/quota-helpers";
+import {
+  parseIdTokenPayload,
+  type QuotaItem,
+  type QuotaState,
+} from "@/modules/quota/quota-helpers";
 import type { QuotaProvider } from "@/modules/quota/quota-fetch";
 
 const MAX_FILENAME_PART_LENGTH = 72;
@@ -68,6 +72,21 @@ const sanitizeFilenamePart = (value: unknown): string => {
     .replace(/^-+|-+$/g, "");
   return text.slice(0, MAX_FILENAME_PART_LENGTH).replace(/^-+|-+$/g, "");
 };
+
+const sanitizeCodexFilenamePart = (value: unknown): string =>
+  Array.from(
+    String(value ?? "")
+      .trim()
+      .toLowerCase(),
+  )
+    .map((char) => {
+      const code = char.charCodeAt(0);
+      return code < 32 || char === "/" || char === "\\" ? "-" : char;
+    })
+    .join("")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, MAX_FILENAME_PART_LENGTH)
+    .replace(/^-+|-+$/g, "");
 
 const readStringField = (record: Record<string, unknown>, keys: string[]): string => {
   for (const key of keys) {
@@ -89,6 +108,89 @@ const readNestedStringField = (
     if (value) return value;
   }
   return "";
+};
+
+const normalizeDedupKeyPart = (value: unknown): string =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase();
+
+const codexFilenamePlanSuffixes = new Set([
+  "plus",
+  "pro",
+  "free",
+  "team",
+  "premium",
+  "business",
+  "enterprise",
+]);
+
+const parseCodexFilenameIdentity = (fileName: string): { accountId?: string; email?: string } => {
+  const normalized = String(fileName ?? "")
+    .trim()
+    .toLowerCase();
+  const base = normalized.replace(/\.json$/u, "");
+  if (!base.startsWith("codex-")) return {};
+  const rest = base.slice("codex-".length);
+  if (!rest) return {};
+  const parts = rest.split("-").filter(Boolean);
+  if (parts.length === 0) return {};
+
+  const emailIndex = parts.findIndex((part) => part.includes("@"));
+  if (emailIndex >= 0) {
+    const email = parts[emailIndex] ?? "";
+    const accountId = parts.slice(0, emailIndex).join("-");
+    return {
+      ...(accountId ? { accountId } : {}),
+      ...(email ? { email } : {}),
+    };
+  }
+
+  const lastPart = parts.at(-1) ?? "";
+  if (codexFilenamePlanSuffixes.has(lastPart) && parts.length > 1) {
+    return { email: parts.slice(0, -1).join("-") };
+  }
+
+  return { accountId: rest };
+};
+
+const collectAuthIdentityKeys = (record: Record<string, unknown>): string[] => {
+  const credentials = isPlainObject(record.credentials) ? record.credentials : undefined;
+  const metadata = isPlainObject(record.metadata) ? record.metadata : undefined;
+  const attributes = isPlainObject(record.attributes) ? record.attributes : undefined;
+  const provider =
+    normalizeProviderKey(
+      readNestedStringField([credentials, metadata, attributes, record], ["type", "provider"]),
+    ) || "auth";
+  const idTokenCandidate =
+    credentials?.id_token ?? metadata?.id_token ?? attributes?.id_token ?? record.id_token;
+  const parsedIdToken = parseIdTokenPayload(idTokenCandidate);
+  const nestedIdToken = isPlainObject(parsedIdToken?.["https://api.openai.com/auth"])
+    ? (parsedIdToken?.["https://api.openai.com/auth"] as Record<string, unknown>)
+    : undefined;
+
+  const accountId = readNestedStringField(
+    [credentials, metadata, attributes, nestedIdToken, parsedIdToken ?? undefined, record],
+    ["chatgpt_account_id", "chatgptAccountId", "account_id", "accountId"],
+  );
+  const email = readNestedStringField([credentials, metadata, attributes, record], ["email"]);
+  const label = readNestedStringField([credentials, metadata, attributes, record], ["label"]);
+  const fileName = readNestedStringField([record], ["name"]);
+  const filenameIdentity =
+    provider === "codex" && fileName ? parseCodexFilenameIdentity(fileName) : {};
+
+  return [
+    ...(accountId ? [`${provider}:account:${normalizeDedupKeyPart(accountId)}`] : []),
+    ...(email ? [`${provider}:email:${normalizeDedupKeyPart(email)}`] : []),
+    ...(label ? [`${provider}:label:${normalizeDedupKeyPart(label)}`] : []),
+    ...(filenameIdentity.accountId
+      ? [`${provider}:account:${normalizeDedupKeyPart(filenameIdentity.accountId)}`]
+      : []),
+    ...(filenameIdentity.email
+      ? [`${provider}:email:${normalizeDedupKeyPart(filenameIdentity.email)}`]
+      : []),
+    ...(fileName ? [`${provider}:file:${normalizeDedupKeyPart(fileName)}`] : []),
+  ];
 };
 
 const findJsonValueEnd = (input: string, start: number): number => {
@@ -295,17 +397,26 @@ const buildPastedAuthFileName = (
   usedNames: Set<string>,
 ): string => {
   const provider = sanitizeFilenamePart(readStringField(record, ["type", "provider"])) || "auth";
+  const email = readStringField(record, ["email", "name"]);
+  const planType = normalizeCodexPlanType(
+    readStringField(record, ["plan_type", "chatgpt_plan_type"]),
+  );
   const identifier =
-    sanitizeFilenamePart(
-      readStringField(record, [
-        "account_id",
-        "chatgpt_account_id",
-        "auth_index",
-        "authIndex",
-        "id",
-      ]),
-    ) || `import-${index + 1}`;
-  const base = `${provider}-${identifier}`.replace(/^-+|-+$/g, "") || `auth-import-${index + 1}`;
+    provider === "codex" && email
+      ? `codex-${sanitizeCodexFilenamePart(email)}${planType ? `-${planType}` : ""}`
+      : sanitizeFilenamePart(
+          readStringField(record, [
+            "account_id",
+            "chatgpt_account_id",
+            "auth_index",
+            "authIndex",
+            "id",
+          ]),
+        ) || `import-${index + 1}`;
+  const base =
+    provider === "codex" && email
+      ? identifier
+      : `${provider}-${identifier}`.replace(/^-+|-+$/g, "") || `auth-import-${index + 1}`;
   let name = `${base}.json`;
   let suffix = 2;
   while (usedNames.has(name)) {
@@ -316,7 +427,7 @@ const buildPastedAuthFileName = (
   return name;
 };
 
-const buildPastedAuthFiles = (input: string): File[] => {
+const buildPastedAuthFiles = (input: string, existingFiles: AuthFileItem[] = []): File[] => {
   const records = parsePastedAuthJsonRecords(input);
   if (records.length === 0) return [];
   const issuedAt = new Date();
@@ -330,10 +441,23 @@ const buildPastedAuthFiles = (input: string): File[] => {
     normalizedRecords.push(record);
   });
   const usedNames = new Set<string>();
-  return normalizedRecords.map((record, index) => {
-    const name = buildPastedAuthFileName(record, index, usedNames);
-    return new File([JSON.stringify(record, null, 2)], name, { type: "application/json" });
+  const usedIdentityKeys = new Set<string>();
+  existingFiles.forEach((file) => {
+    collectAuthIdentityKeys(file).forEach((key) => usedIdentityKeys.add(key));
   });
+
+  const files: File[] = [];
+  normalizedRecords.forEach((record, index) => {
+    const identityKeys = collectAuthIdentityKeys(record);
+    if (identityKeys.some((key) => usedIdentityKeys.has(key))) {
+      return;
+    }
+    identityKeys.forEach((key) => usedIdentityKeys.add(key));
+    const name = buildPastedAuthFileName(record, index, usedNames);
+    files.push(new File([JSON.stringify(record, null, 2)], name, { type: "application/json" }));
+  });
+
+  return files;
 };
 
 interface AuthFilesFilesTabProps {
@@ -357,6 +481,7 @@ interface AuthFilesFilesTabProps {
   setSearch: (value: string) => void;
   quotaLastUpdatedText: string;
   loading: boolean;
+  files: AuthFileItem[];
   filesLength: number;
   renderFilesViewModeTabs: ReactNode;
   quotaAutoRefreshMs: QuotaAutoRefreshMs;
@@ -436,6 +561,7 @@ export function AuthFilesFilesTab({
   setSearch,
   quotaLastUpdatedText,
   loading,
+  files,
   filesLength,
   renderFilesViewModeTabs,
   quotaAutoRefreshMs,
@@ -575,23 +701,23 @@ export function AuthFilesFilesTab({
 
   const submitJsonImport = useCallback(async () => {
     setJsonImportError("");
-    let files: File[];
+    let uploadFiles: File[];
     try {
-      files = buildPastedAuthFiles(jsonImportText);
+      uploadFiles = buildPastedAuthFiles(jsonImportText, files);
     } catch {
       setJsonImportError(t("auth_files.paste_json_invalid"));
       return;
     }
 
-    if (files.length === 0) {
+    if (uploadFiles.length === 0) {
       setJsonImportError(t("auth_files.paste_json_empty"));
       return;
     }
 
-    await handleUpload(files);
+    await handleUpload(uploadFiles);
     setJsonImportText("");
     setJsonImportOpen(false);
-  }, [handleUpload, jsonImportText, t]);
+  }, [files, handleUpload, jsonImportText, t]);
 
   return (
     <div className="mt-3 space-y-3">
