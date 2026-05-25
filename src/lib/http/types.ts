@@ -202,6 +202,7 @@ export interface ProviderSimpleConfig {
   headers?: Record<string, string>;
   models?: ProviderModel[];
   excludedModels?: string[];
+  visionFallbackModel?: string;
   skipAnthropicProcessing?: boolean;
 }
 

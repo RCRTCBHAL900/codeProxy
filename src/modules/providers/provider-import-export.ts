@@ -174,6 +174,14 @@ const normalizeSimpleItem = (
       ...(sortExcludedModels(value["excluded-models"] ?? value.excludedModels)
         ? { excludedModels: sortExcludedModels(value["excluded-models"] ?? value.excludedModels) }
         : {}),
+      ...(kind === "opencode-go" &&
+      normalizeString(value["vision-fallback-model"] ?? value.visionFallbackModel)
+        ? {
+            visionFallbackModel: normalizeString(
+              value["vision-fallback-model"] ?? value.visionFallbackModel,
+            )!,
+          }
+        : {}),
       ...((value["skip-anthropic-processing"] === true || value.skipAnthropicProcessing === true) &&
       kind === "claude"
         ? { skipAnthropicProcessing: true }

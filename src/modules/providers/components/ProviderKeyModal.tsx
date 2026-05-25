@@ -30,11 +30,11 @@ import {
 } from "@/modules/providers/providers-helpers";
 import { modelsApi } from "@/lib/http/apis";
 import type { ModelEntryDraft } from "@/modules/providers/ModelInputList";
-import { createEmptyModelEntry } from "@/modules/providers/ModelInputList";
 
 const OPENCODE_GO_MODELS_URL = "https://opencode.ai/zen/go/v1/models";
 const OPENCODE_GO_CHAT_URL = "https://opencode.ai/zen/go/v1/chat/completions";
 const OPENCODE_GO_MESSAGES_URL = "https://opencode.ai/zen/go/v1/messages";
+const OPENCODE_GO_VISION_MODEL_IDS = new Set(["qwen3.5-plus", "qwen3.6-plus"]);
 
 type ProviderKeyModalTab = "basic" | "request" | "models";
 
@@ -230,6 +230,48 @@ export function ProviderKeyModal({
   const allowedOpenCodeCount = openCodeModels.filter(
     (model) => !disableAllModels && !excludedModelIds.has(model.id.toLowerCase()),
   ).length;
+  const openCodeVisionFallbackOptions = useMemo(() => {
+    const allowedModels = openCodeModels.filter(
+      (model) =>
+        OPENCODE_GO_VISION_MODEL_IDS.has(model.id.toLowerCase()) &&
+        !disableAllModels &&
+        !excludedModelIds.has(model.id.toLowerCase()),
+    );
+    const modelOptions = allowedModels.map((model) => ({
+      value: model.id,
+      label: model.owned_by ? `${model.id} · ${model.owned_by}` : model.id,
+    }));
+    return [{ value: "", label: t("providers.opencode_go_vision_fallback_none") }, ...modelOptions];
+  }, [disableAllModels, excludedModelIds, openCodeModels, t]);
+
+  useEffect(() => {
+    if (!open || !isOpenCodeGo || openCodeModels.length === 0) return;
+    const fallback = keyDraft.visionFallbackModel.trim();
+    if (!fallback) return;
+    const fallbackLower = fallback.toLowerCase();
+    const allowed =
+      !disableAllModels &&
+      openCodeModels.some(
+        (model) =>
+          model.id.toLowerCase() === fallbackLower &&
+          OPENCODE_GO_VISION_MODEL_IDS.has(fallbackLower) &&
+          !excludedModelIds.has(fallbackLower),
+      );
+    if (allowed) return;
+    setKeyDraft((prev) =>
+      prev.visionFallbackModel.trim().toLowerCase() === fallbackLower
+        ? { ...prev, visionFallbackModel: "" }
+        : prev,
+    );
+  }, [
+    disableAllModels,
+    excludedModelIds,
+    isOpenCodeGo,
+    keyDraft.visionFallbackModel,
+    open,
+    openCodeModels,
+    setKeyDraft,
+  ]);
 
   const setExcludedModels = useCallback(
     (next: string[]) => {
@@ -561,6 +603,28 @@ export function ProviderKeyModal({
                 </div>
                 <p className="mt-2 text-xs text-slate-500 dark:text-white/55">
                   {t("providers.opencode_go_fixed_endpoint_hint")}
+                </p>
+              </SectionCard>
+            ) : null}
+
+            {isOpenCodeGo ? (
+              <SectionCard>
+                <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                  {t("providers.opencode_go_vision_fallback_title")}
+                </p>
+                <div className="mt-3">
+                  <Select
+                    value={keyDraft.visionFallbackModel}
+                    onChange={(value) =>
+                      setKeyDraft((prev) => ({ ...prev, visionFallbackModel: value }))
+                    }
+                    options={openCodeVisionFallbackOptions}
+                    aria-label={t("providers.opencode_go_vision_fallback_title")}
+                    disabled={openCodeModelsLoading || openCodeVisionFallbackOptions.length <= 1}
+                  />
+                </div>
+                <p className="mt-2 text-xs text-slate-500 dark:text-white/55">
+                  {t("providers.opencode_go_vision_fallback_hint")}
                 </p>
               </SectionCard>
             ) : null}

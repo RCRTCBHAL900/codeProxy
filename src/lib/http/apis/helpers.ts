@@ -144,6 +144,8 @@ export const serializeOpenCodeGoKey = (config: ProviderSimpleConfig) => {
   if (config.excludedModels && config.excludedModels.length) {
     payload["excluded-models"] = config.excludedModels;
   }
+  const visionFallbackModel = normalizeString(config.visionFallbackModel);
+  if (visionFallbackModel) payload["vision-fallback-model"] = visionFallbackModel;
   return payload;
 };
 

@@ -33,6 +33,7 @@ describe("providersApi OpenCode Go", () => {
           headers: { "X-Test": "yes" },
           models: [{ name: "should-not-surface" }],
           "excluded-models": ["disabled-model"],
+          "vision-fallback-model": "qwen3.5-plus",
         },
       ],
     });
@@ -49,6 +50,7 @@ describe("providersApi OpenCode Go", () => {
         proxyUrl: "http://127.0.0.1:7890",
         headers: { "X-Test": "yes" },
         excludedModels: ["disabled-model"],
+        visionFallbackModel: "qwen3.5-plus",
       },
     ]);
   });
@@ -94,6 +96,7 @@ describe("providersApi OpenCode Go", () => {
         headers: { "X-Test": "yes" },
         models: [{ name: "should-not-save" }],
         excludedModels: ["disabled-model"],
+        visionFallbackModel: "qwen3.5-plus",
       },
     ]);
 
@@ -106,6 +109,7 @@ describe("providersApi OpenCode Go", () => {
         "proxy-url": "http://127.0.0.1:7890",
         headers: { "X-Test": "yes" },
         "excluded-models": ["disabled-model"],
+        "vision-fallback-model": "qwen3.5-plus",
       },
     ]);
 

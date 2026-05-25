@@ -6,6 +6,13 @@ import { ProvidersPage } from "@/modules/providers/ProvidersPage";
 import { ThemeProvider } from "@/modules/ui/ThemeProvider";
 import { ToastProvider } from "@/modules/ui/ToastProvider";
 
+type MockApiCallResult = {
+  statusCode: number;
+  header: Record<string, string[]>;
+  bodyText: string;
+  body: unknown;
+};
+
 const mocks = vi.hoisted(() => ({
   getGeminiKeys: vi.fn(async () => []),
   getClaudeConfigs: vi.fn(async () => []),
@@ -15,18 +22,21 @@ const mocks = vi.hoisted(() => ({
   getOpenCodeGoConfigs: vi.fn(async (): Promise<any[]> => []),
   getOpenAIProviders: vi.fn(async () => []),
   saveOpenCodeGoConfigs: vi.fn(async (_configs: unknown[]) => ({})),
-  apiCallRequest: vi.fn(async (_payload: unknown) => ({
-    statusCode: 200,
-    header: {},
-    bodyText: "",
-    body: {
-      object: "list",
-      data: [
-        { id: "deepseek-v4-flash", object: "model", owned_by: "opencode" },
-        { id: "kimi-k2.6", object: "model", owned_by: "opencode" },
-      ],
-    },
-  })),
+  apiCallRequest: vi.fn(
+    async (_payload: unknown): Promise<MockApiCallResult> => ({
+      statusCode: 200,
+      header: {},
+      bodyText: "",
+      body: {
+        object: "list",
+        data: [
+          { id: "deepseek-v4-flash", object: "model", owned_by: "opencode" },
+          { id: "qwen3.5-plus", object: "model", owned_by: "opencode" },
+          { id: "kimi-k2.6", object: "model", owned_by: "opencode" },
+        ],
+      },
+    }),
+  ),
   getEntityStats: vi.fn(async () => ({ source: [] })),
   apiKeyEntriesList: vi.fn(async () => []),
   channelGroupsList: vi.fn(async () => []),
@@ -96,6 +106,7 @@ describe("ProvidersPage OpenCode Go tab", () => {
         object: "list",
         data: [
           { id: "deepseek-v4-flash", object: "model", owned_by: "opencode" },
+          { id: "qwen3.5-plus", object: "model", owned_by: "opencode" },
           { id: "kimi-k2.6", object: "model", owned_by: "opencode" },
         ],
       },
@@ -233,5 +244,67 @@ describe("ProvidersPage OpenCode Go tab", () => {
       ]);
     });
     expect(mocks.saveOpenCodeGoConfigs.mock.calls[0][0][0]).not.toHaveProperty("models");
+  });
+
+  test("offers fetched OpenCode Go models as vision fallback options from string api-call body", async () => {
+    const user = userEvent.setup();
+    mocks.apiCallRequest.mockImplementation(async () => ({
+      statusCode: 200,
+      header: {},
+      bodyText: "",
+      body: JSON.stringify({
+        object: "list",
+        data: [
+          { id: "deepseek-v4-flash", object: "model", owned_by: "opencode" },
+          { id: "qwen3.5-plus", object: "model", owned_by: "opencode" },
+          { id: "qwen3.6-plus", object: "model", owned_by: "opencode" },
+          { id: "minimax-m2.5", object: "model", owned_by: "opencode" },
+        ],
+      }),
+    }));
+
+    render(
+      <MemoryRouter initialEntries={["/ai-providers/opencode-go/new"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/ai-providers/*" element={<ProvidersPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    const dialog = await screen.findByRole("dialog", { name: /Add OpenCode Go configuration/i });
+    await user.click(within(dialog).getByRole("tab", { name: /Models/i }));
+    await user.click(await within(dialog).findByRole("checkbox", { name: /minimax-m2.5/i }));
+
+    await user.click(within(dialog).getByRole("tab", { name: /Request/i }));
+    const fallback = await within(dialog).findByRole("combobox", {
+      name: /Vision fallback model/i,
+    });
+    await user.click(fallback);
+
+    expect(await screen.findByRole("option", { name: /qwen3\.5-plus/i })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /qwen3\.6-plus/i })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /deepseek-v4-flash/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /minimax-m2\.5/i })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: /qwen3\.5-plus/i }));
+
+    await user.click(within(dialog).getByRole("tab", { name: /Basic/i }));
+    await user.type(within(dialog).getByPlaceholderText("e.g. Gemini Primary"), "OpenCode Go");
+    await user.type(within(dialog).getByPlaceholderText(/Paste API Key/i), "sk-opencode-go");
+    await user.click(within(dialog).getByRole("button", { name: /Save/ }));
+
+    await waitFor(() => {
+      expect(mocks.saveOpenCodeGoConfigs).toHaveBeenCalledWith([
+        expect.objectContaining({
+          name: "OpenCode Go",
+          apiKey: "sk-opencode-go",
+          excludedModels: ["minimax-m2.5"],
+          visionFallbackModel: "qwen3.5-plus",
+        }),
+      ]);
+    });
   });
 });

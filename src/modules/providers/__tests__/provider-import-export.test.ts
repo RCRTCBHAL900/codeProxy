@@ -34,14 +34,46 @@ describe("provider import/export helpers", () => {
           "api-key": "sk-b",
           "excluded-models": ["claude-3", "gpt-4"],
           headers: { A: "1", Z: "2" },
-          models: [
-            { alias: "sonnet", name: "claude-3" },
-            { name: "gpt-4" },
-          ],
+          models: [{ alias: "sonnet", name: "claude-3" }, { name: "gpt-4" }],
           name: "Beta",
         },
       ],
     });
+  });
+
+  test("preserves OpenCode Go vision fallback model during import and export", () => {
+    const text = createProviderExportText("opencode-go", [
+      {
+        apiKey: " go-key ",
+        name: "OpenCode Go",
+        excludedModels: [" deepseek-v4-pro "],
+        visionFallbackModel: " qwen3.5-plus ",
+      },
+    ] satisfies ProviderSimpleConfig[]);
+
+    expect(JSON.parse(text)).toEqual({
+      provider: "opencode-go",
+      version: 1,
+      items: [
+        {
+          "api-key": "go-key",
+          "excluded-models": ["deepseek-v4-pro"],
+          name: "OpenCode Go",
+          "vision-fallback-model": "qwen3.5-plus",
+        },
+      ],
+    });
+
+    const preview = prepareProviderImport("opencode-go", text, []);
+
+    expect(preview.nextItems).toEqual([
+      {
+        apiKey: "go-key",
+        name: "OpenCode Go",
+        excludedModels: ["deepseek-v4-pro"],
+        visionFallbackModel: "qwen3.5-plus",
+      },
+    ]);
   });
 
   test("normalizes imports, reports diff counts, and removes duplicate OpenAI nested entries", () => {
@@ -103,10 +135,7 @@ describe("provider import/export helpers", () => {
       {
         name: "OpenAI Main",
         baseUrl: "https://example.com/v1",
-        apiKeyEntries: [
-          { apiKey: "sk-new", headers: { A: "1", Z: "2" } },
-          { apiKey: "sk-old" },
-        ],
+        apiKeyEntries: [{ apiKey: "sk-new", headers: { A: "1", Z: "2" } }, { apiKey: "sk-old" }],
         models: [{ name: "gpt-4.1" }],
       },
     ]);

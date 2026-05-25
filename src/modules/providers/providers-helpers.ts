@@ -66,6 +66,15 @@ export const normalizeDiscoveredModels = (
   if (!payload) return [];
   const isRecord = (v: unknown): v is Record<string, unknown> =>
     v !== null && typeof v === "object" && !Array.isArray(v);
+  if (typeof payload === "string") {
+    const trimmed = payload.trim();
+    if (!trimmed) return [];
+    try {
+      return normalizeDiscoveredModels(JSON.parse(trimmed));
+    } catch {
+      return [];
+    }
+  }
   const root = isRecord(payload) ? payload : null;
   const data = root ? (root.data ?? root.models ?? payload) : payload;
   if (!Array.isArray(data)) return [];
@@ -99,6 +108,7 @@ export type ProviderKeyDraft = {
   proxyUrl: string;
   proxyId: string;
   excludedModelsText: string;
+  visionFallbackModel: string;
   headersEntries: KeyValueEntry[];
   modelEntries: ModelEntryDraft[];
   skipAnthropicProcessing: boolean;
@@ -178,6 +188,7 @@ export const buildProviderKeyDraft = (
     proxyUrl: input?.proxyUrl ?? "",
     proxyId: input?.proxyId ?? "",
     excludedModelsText: excludedModelsToText(input?.excludedModels),
+    visionFallbackModel: input?.visionFallbackModel ?? "",
     headersEntries: recordToKeyValueEntries(input?.headers),
     modelEntries: buildModelEntries(input?.models),
     skipAnthropicProcessing: input?.skipAnthropicProcessing ?? false,

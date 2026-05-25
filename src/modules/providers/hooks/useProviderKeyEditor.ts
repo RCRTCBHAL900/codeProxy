@@ -141,6 +141,9 @@ export function useProviderKeyEditor({
       ...(keyDraft.proxyId.trim() ? { proxyId: keyDraft.proxyId.trim() } : {}),
       ...(headers ? { headers } : {}),
       ...(excludedModels ? { excludedModels } : {}),
+      ...(isOpenCodeGo && keyDraft.visionFallbackModel.trim()
+        ? { visionFallbackModel: keyDraft.visionFallbackModel.trim() }
+        : {}),
       ...(!isOpenCodeGo && modelCommit.models ? { models: modelCommit.models } : {}),
       ...(editKeyType === "claude" && keyDraft.skipAnthropicProcessing
         ? { skipAnthropicProcessing: true }
