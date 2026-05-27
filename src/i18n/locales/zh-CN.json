@@ -3032,6 +3032,8 @@
     "query": "查询",
     "query_failed": "查询失败",
     "load_models_failed": "加载模型列表失败",
+    "error_invalid_api_key": "无效的 API Key",
+    "error_missing_management_key": "缺少管理端访问密钥",
     "last_n_days": "最近 {{days}} 天",
     "model_distribution_desc_requests": "模型请求占比",
     "model_distribution_desc_tokens": "模型 Token 占比",

@@ -25,7 +25,6 @@ import {
   buildLogColumns,
   PublicLogsSection,
 } from "@/modules/apikey-lookup/components/PublicLogsSection";
-import { QuickImportTabContent } from "@/modules/apikey-lookup/components/QuickImportTabContent";
 import { UsageTabSection } from "@/modules/apikey-lookup/components/UsageTabSection";
 import { useApiKeyLookupCharts } from "@/modules/apikey-lookup/hooks/useApiKeyLookupCharts";
 import type { ChartDataResponse, LogRow, PublicLogItem } from "@/modules/apikey-lookup/types";
@@ -63,6 +62,55 @@ const writeStoredLookupKey = (value: string): void => {
   } catch {
     // ignore storage failures
   }
+};
+
+const extractServerErrorMessage = (raw: unknown): string => {
+  if (raw instanceof Error) return extractServerErrorMessage(raw.message);
+  const text = typeof raw === "string" ? raw.trim() : "";
+  if (!text) return "";
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const record = parsed as Record<string, unknown>;
+      const errorValue =
+        typeof record.error === "string"
+          ? record.error
+          : typeof record.message === "string"
+            ? record.message
+            : "";
+      if (errorValue.trim()) return errorValue.trim();
+    }
+  } catch {
+    // ignore JSON parse errors
+  }
+  return text;
+};
+
+const localizeLookupError = (
+  t: (key: string, options?: Record<string, unknown>) => string,
+  raw: unknown,
+  fallbackKey: string,
+): string => {
+  const message = extractServerErrorMessage(raw);
+  const normalized = message.toLowerCase();
+
+  if (!message) return t(fallbackKey);
+
+  if (
+    normalized.includes("invalid api key") ||
+    normalized.includes("invalid apikey") ||
+    normalized.includes("invalid token") ||
+    normalized.includes("unauthorized")
+  ) {
+    return t("apikey_lookup.error_invalid_api_key");
+  }
+
+  if (normalized.includes("missing management key")) {
+    return t("apikey_lookup.error_missing_management_key");
+  }
+
+  if (normalized.includes("request failed")) return message;
+  return message;
 };
 
 const readLegacyLookupKeyFromUrl = (): string => {
@@ -136,7 +184,6 @@ export function ApiKeyLookupPage() {
 
   // ── Tab state ──
   const [activeTab, setActiveTab] = useState<ApiKeyLookupTab>("usage");
-  const [quickImportReloadToken, setQuickImportReloadToken] = useState(0);
 
   // ── Logs state (server-side pagination) ──
   const [rawItems, setRawItems] = useState<PublicLogItem[]>([]);
@@ -221,7 +268,7 @@ export function ApiKeyLookupPage() {
         if (err instanceof DOMException && err.name === "AbortError") return;
         if (myFetchId !== fetchIdRef.current) return;
 
-        const message = err instanceof Error ? err.message : t("apikey_lookup.query_failed");
+        const message = localizeLookupError(t, err, "apikey_lookup.query_failed");
         setError(message);
         setRawItems([]);
         setTotalCount(0);
@@ -305,7 +352,7 @@ export function ApiKeyLookupPage() {
         const ids = await fetchAvailableModels(key);
         setAvailableModels(ids);
       } catch (err: unknown) {
-        setModelsError(err instanceof Error ? err.message : t("apikey_lookup.load_models_failed"));
+        setModelsError(localizeLookupError(t, err, "apikey_lookup.load_models_failed"));
       } finally {
         setModelsLoading(false);
       }
@@ -372,6 +419,37 @@ export function ApiKeyLookupPage() {
     [apiKeyInput, activeTab, timeRange, fetchLogs, fetchChartDataFn, fetchModelsFn],
   );
 
+  const handleApiKeyInputChange = useCallback(
+    (value: string) => {
+      setApiKeyInput(value);
+      if (value.trim()) return;
+
+      abortControllerRef.current?.abort();
+      fetchIdRef.current += 1;
+      paginationInFlightRef.current = false;
+      chartCacheRef.current = {};
+
+      setError(null);
+      setModelsError(null);
+      setModelsSearchFilter("");
+      setAvailableModels([]);
+      setChartData(null);
+
+      setRawItems([]);
+      setTotalCount(0);
+      setCurrentPage(1);
+      setLastUpdatedAt(null);
+      setStats({ total: 0, success_rate: 0, total_tokens: 0, total_cost: 0 });
+      setModelOptions([]);
+      setModelQuery("");
+      setStatusFilter("");
+
+      setQueriedKey("");
+      writeStoredLookupKey("");
+    },
+    [],
+  );
+
   const handleRefresh = useCallback(() => {
     if (queriedKey) {
       if (activeTab === "usage") {
@@ -379,8 +457,6 @@ export function ApiKeyLookupPage() {
         void fetchChartDataFn(queriedKey, timeRange);
       } else if (activeTab === "models") {
         void fetchModelsFn(queriedKey);
-      } else if (activeTab === "quickImport") {
-        setQuickImportReloadToken((value) => value + 1);
       } else {
         fetchLogs(queriedKey, 1);
       }
@@ -474,7 +550,7 @@ export function ApiKeyLookupPage() {
         <LookupSearchSection
           t={t}
           apiKeyInput={apiKeyInput}
-          setApiKeyInput={setApiKeyInput}
+          setApiKeyInput={handleApiKeyInputChange}
           handleSubmit={handleSubmit}
           loading={loading}
         />
@@ -553,12 +629,6 @@ export function ApiKeyLookupPage() {
                   searchFilter={modelsSearchFilter}
                   onSearchChange={setModelsSearchFilter}
                 />
-              </Reveal>
-            ) : null}
-
-            {activeTab === "quickImport" ? (
-              <Reveal>
-                <QuickImportTabContent apiKey={queriedKey} reloadToken={quickImportReloadToken} />
               </Reveal>
             ) : null}
           </>

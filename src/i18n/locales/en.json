@@ -2791,6 +2791,8 @@
     "query": "Query",
     "query_failed": "Query failed",
     "load_models_failed": "Failed to load models list",
+    "error_invalid_api_key": "Invalid API key",
+    "error_missing_management_key": "Missing management key",
     "last_n_days": "Last {{days}} days",
     "model_distribution_desc_requests": "Share of requests by model",
     "model_distribution_desc_tokens": "Share of tokens by model",
