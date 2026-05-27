@@ -1,8 +1,12 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { RefreshCw } from "lucide-react";
-import type { UpdateCheckResponse, UpdateProgressResponse } from "@/lib/http/apis/update";
+import type {
+  UpdateCheckResponse,
+  UpdateProgressLogEntry,
+  UpdateProgressResponse,
+} from "@/lib/http/apis/update";
 import { Button } from "@/modules/ui/Button";
 import { Modal } from "@/modules/ui/Modal";
 import {
@@ -54,6 +58,8 @@ function ReleaseNotesMarkdown({ text }: { text: string }) {
 const MAX_RELEASE_NOTE_ITEMS = 5;
 const LIST_ITEM_PATTERN = /^\s*(?:[-*+]|\d+\.)\s+/;
 const UPDATE_STAGE_ORDER = ["preparing", "pulling", "restarting", "verifying", "completed"];
+const UPDATE_LOG_MAX_VISIBLE_LINES = 60;
+const UPDATE_LOG_FRAME_INTERVAL_MS = 1000 / 30;
 const UPDATE_STAGE_LABEL_KEYS: Record<string, string> = {
   preparing: "auto_update.progress_stage_preparing",
   pulling: "auto_update.progress_stage_pulling",
@@ -99,6 +105,150 @@ function formatLogTimestamp(value?: string) {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
+function sameLogEntry(left: UpdateProgressLogEntry, right: UpdateProgressLogEntry) {
+  return (
+    left.timestamp === right.timestamp &&
+    left.stream === right.stream &&
+    left.message === right.message
+  );
+}
+
+function findLogOverlap(previous: UpdateProgressLogEntry[], next: UpdateProgressLogEntry[]) {
+  const maxOverlap = Math.min(previous.length, next.length);
+  for (let size = maxOverlap; size > 0; size -= 1) {
+    let matches = true;
+    for (let index = 0; index < size; index += 1) {
+      if (!sameLogEntry(previous[previous.length - size + index], next[index])) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) return size;
+  }
+  return 0;
+}
+
+function sameLogEntries(left: UpdateProgressLogEntry[], right: UpdateProgressLogEntry[]) {
+  return (
+    left.length === right.length && left.every((entry, index) => sameLogEntry(entry, right[index]))
+  );
+}
+
+function limitVisibleLogs(logs: UpdateProgressLogEntry[]) {
+  return logs.slice(-UPDATE_LOG_MAX_VISIBLE_LINES);
+}
+
+function frameNow() {
+  return window.performance?.now?.() ?? Date.now();
+}
+
+type AnimationFrameHandle =
+  | { kind: "animation-frame"; id: number }
+  | { kind: "timeout"; id: number };
+
+function useSmoothUpdateLogs(sourceLogs: UpdateProgressLogEntry[]) {
+  const [visibleLogs, setVisibleLogs] = useState<UpdateProgressLogEntry[]>([]);
+  const visibleLogsRef = useRef<UpdateProgressLogEntry[]>([]);
+  const queuedLogsRef = useRef<UpdateProgressLogEntry[]>([]);
+  const frameHandleRef = useRef<AnimationFrameHandle | null>(null);
+  const lastFrameTimeRef = useRef(0);
+
+  const commitVisibleLogs = (
+    updater:
+      | UpdateProgressLogEntry[]
+      | ((current: UpdateProgressLogEntry[]) => UpdateProgressLogEntry[]),
+  ) => {
+    setVisibleLogs((current) => {
+      const next = typeof updater === "function" ? updater(current) : updater;
+      visibleLogsRef.current = next;
+      return next;
+    });
+  };
+
+  const cancelFrame = () => {
+    const handle = frameHandleRef.current;
+    if (!handle) return;
+    if (handle.kind === "animation-frame" && typeof window.cancelAnimationFrame === "function") {
+      window.cancelAnimationFrame(handle.id);
+    } else {
+      window.clearTimeout(handle.id);
+    }
+    frameHandleRef.current = null;
+  };
+
+  const scheduleFrame = () => {
+    if (frameHandleRef.current || !queuedLogsRef.current.length) return;
+
+    const flushFrame = (timestamp: number) => {
+      frameHandleRef.current = null;
+      if (!queuedLogsRef.current.length) return;
+
+      if (timestamp - lastFrameTimeRef.current < UPDATE_LOG_FRAME_INTERVAL_MS) {
+        scheduleFrame();
+        return;
+      }
+
+      lastFrameTimeRef.current = timestamp;
+      const nextLog = queuedLogsRef.current.shift();
+      if (nextLog) {
+        commitVisibleLogs((current) => limitVisibleLogs([...current, nextLog]));
+      }
+      scheduleFrame();
+    };
+
+    if (typeof window.requestAnimationFrame === "function") {
+      frameHandleRef.current = {
+        kind: "animation-frame",
+        id: window.requestAnimationFrame(flushFrame),
+      };
+    } else {
+      frameHandleRef.current = {
+        kind: "timeout",
+        id: window.setTimeout(() => flushFrame(frameNow()), UPDATE_LOG_FRAME_INTERVAL_MS),
+      };
+    }
+  };
+
+  useEffect(() => cancelFrame, []);
+
+  useEffect(() => {
+    const targetLogs = limitVisibleLogs(sourceLogs);
+    const currentVisibleLogs = visibleLogsRef.current;
+    const currentQueuedLogs = queuedLogsRef.current;
+
+    if (!targetLogs.length) {
+      queuedLogsRef.current = [];
+      cancelFrame();
+      if (currentVisibleLogs.length) {
+        commitVisibleLogs([]);
+      }
+      return;
+    }
+
+    const plannedLogs = limitVisibleLogs([...currentVisibleLogs, ...currentQueuedLogs]);
+    const overlap = findLogOverlap(plannedLogs, targetLogs);
+    const overlapStart = plannedLogs.length - overlap;
+    const visibleOverlap =
+      overlap > 0 && overlapStart < currentVisibleLogs.length
+        ? currentVisibleLogs.slice(overlapStart)
+        : [];
+    const hadPendingLogs = currentQueuedLogs.length > 0;
+    const nextVisibleLogs = visibleOverlap.length ? visibleOverlap : targetLogs.slice(0, 1);
+    const nextQueuedLogs = targetLogs.slice(nextVisibleLogs.length);
+
+    queuedLogsRef.current = nextQueuedLogs;
+    if (!sameLogEntries(currentVisibleLogs, nextVisibleLogs)) {
+      lastFrameTimeRef.current = frameNow();
+      commitVisibleLogs(nextVisibleLogs);
+    }
+    if (nextQueuedLogs.length && (!hadPendingLogs || !frameHandleRef.current)) {
+      scheduleFrame();
+    }
+  }, [sourceLogs]);
+
+  return visibleLogs;
+}
+
 function UpdateProgressConsole({
   candidate,
   progress,
@@ -134,14 +284,15 @@ function UpdateProgressConsole({
     [candidate.docker_image, candidate.docker_tag].filter(Boolean).join(":") ||
     "--";
   const logs = progress?.logs ?? [];
+  const visibleLogs = useSmoothUpdateLogs(logs);
   const activeStageIndex = Math.max(0, UPDATE_STAGE_ORDER.indexOf(stage));
   const isRunning = progress?.status === "running";
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const node = logStreamRef.current;
     if (!node) return;
     node.scrollTop = node.scrollHeight;
-  }, [logs]);
+  }, [visibleLogs]);
 
   return (
     <section
@@ -229,8 +380,8 @@ function UpdateProgressConsole({
           ref={logStreamRef}
           className="max-h-64 min-h-32 overflow-y-auto whitespace-pre-wrap break-words p-3 font-mono leading-5"
         >
-          {logs.length ? (
-            logs.map((entry, index) => (
+          {visibleLogs.length ? (
+            visibleLogs.map((entry, index) => (
               <div key={`${entry.timestamp ?? "log"}-${index}`} className="break-words">
                 <span className="text-slate-500">{formatLogTimestamp(entry.timestamp)}</span>{" "}
                 <span className="text-sky-300">{entry.stream || "log"}</span>{" "}
@@ -277,8 +428,8 @@ export function UpdateDetailsModal({
   const displayCandidate = showProgressConsole ? (updateTarget ?? candidate) : candidate;
   const alreadyUpToDate = Boolean(
     displayCandidate &&
-      !displayCandidate.update_available &&
-      (!displayCandidate.message || isAlreadyUpToDateMessage(displayCandidate.message)),
+    !displayCandidate.update_available &&
+    (!displayCandidate.message || isAlreadyUpToDateMessage(displayCandidate.message)),
   );
 
   const canUpdate = Boolean(
@@ -419,12 +570,8 @@ export function UpdateDetailsModal({
             {!showProgressConsole ? (
               <dl className="grid min-w-0 gap-3 lg:grid-cols-2">
                 <div className={versionCardClass}>
-                  <dt className={versionCardLabelClass}>
-                    {t("auto_update.current_service")}
-                  </dt>
-                  <dd className={versionCardValueClass}>
-                    {currentVersion}
-                  </dd>
+                  <dt className={versionCardLabelClass}>{t("auto_update.current_service")}</dt>
+                  <dd className={versionCardValueClass}>{currentVersion}</dd>
                   {displayCandidate.current_commit ? (
                     <p className={versionCardMetaClass}>
                       {t("auto_update.commit")}: {shortCommit(displayCandidate.current_commit)}
@@ -432,12 +579,8 @@ export function UpdateDetailsModal({
                   ) : null}
                 </div>
                 <div className={versionCardClass}>
-                  <dt className={versionCardLabelClass}>
-                    {t("auto_update.target_service")}
-                  </dt>
-                  <dd className={versionCardValueClass}>
-                    {targetVersion}
-                  </dd>
+                  <dt className={versionCardLabelClass}>{t("auto_update.target_service")}</dt>
+                  <dd className={versionCardValueClass}>{targetVersion}</dd>
                   {displayCandidate.latest_commit ? (
                     displayCandidate.latest_commit_url ? (
                       <a
@@ -460,12 +603,8 @@ export function UpdateDetailsModal({
                   ) : null}
                 </div>
                 <div className={versionCardClass}>
-                  <dt className={versionCardLabelClass}>
-                    {t("auto_update.current_ui")}
-                  </dt>
-                  <dd className={versionCardValueClass}>
-                    {currentUIVersion}
-                  </dd>
+                  <dt className={versionCardLabelClass}>{t("auto_update.current_ui")}</dt>
+                  <dd className={versionCardValueClass}>{currentUIVersion}</dd>
                   {displayCandidate.current_ui_commit ? (
                     <p className={versionCardMetaClass}>
                       {t("auto_update.commit")}: {shortCommit(displayCandidate.current_ui_commit)}
@@ -473,12 +612,8 @@ export function UpdateDetailsModal({
                   ) : null}
                 </div>
                 <div className={versionCardClass}>
-                  <dt className={versionCardLabelClass}>
-                    {t("auto_update.target_ui")}
-                  </dt>
-                  <dd className={versionCardValueClass}>
-                    {targetUIVersion}
-                  </dd>
+                  <dt className={versionCardLabelClass}>{t("auto_update.target_ui")}</dt>
+                  <dd className={versionCardValueClass}>{targetUIVersion}</dd>
                   {displayCandidate.latest_ui_commit ? (
                     displayCandidate.latest_ui_commit_url ? (
                       <a
@@ -501,13 +636,8 @@ export function UpdateDetailsModal({
                   ) : null}
                 </div>
                 <div className={`${versionCardClass} lg:col-span-2`}>
-                  <dt className={versionCardLabelClass}>
-                    {t("auto_update.image")}
-                  </dt>
-                  <dd
-                    data-testid="update-image-value"
-                    className={versionCardValueClass}
-                  >
+                  <dt className={versionCardLabelClass}>{t("auto_update.image")}</dt>
+                  <dd data-testid="update-image-value" className={versionCardValueClass}>
                     {dockerImage}
                   </dd>
                 </div>

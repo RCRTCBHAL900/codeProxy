@@ -541,7 +541,9 @@ describe("SystemPage", () => {
 
     expect(within(dialog).getByTestId("update-progress-console")).toBeInTheDocument();
     expect(within(dialog).getByText(/docker compose pull clirelay/i)).toBeInTheDocument();
-    expect(within(dialog).getByText(/Container clirelay Started/i)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(dialog).getByText(/Container clirelay Started/i)).toBeInTheDocument();
+    });
     expect(within(dialog).getByText(/main-1111111/i)).toBeInTheDocument();
     expect(within(dialog).getByText(/main-abcdef1/i)).toBeInTheDocument();
     expect(within(dialog).getAllByText("Completed").length).toBeGreaterThan(0);

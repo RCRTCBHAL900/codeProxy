@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, test } from "vitest";
+import { act, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import i18n from "@/i18n";
 import { UpdateDetailsModal } from "@/modules/update/UpdateDetailsModal";
 
@@ -23,10 +23,28 @@ const candidate = {
 
 describe("UpdateDetailsModal", () => {
   beforeEach(async () => {
+    vi.useRealTimers();
     await i18n.changeLanguage("en");
   });
 
-  test("auto-scrolls the update log stream to the latest line", async () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  test("paces update log rendering at 30fps and auto-scrolls each visible frame", async () => {
+    vi.useFakeTimers();
+    let frameTime = 0;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) =>
+      window.setTimeout(() => {
+        frameTime += 34;
+        callback(frameTime);
+      }, 34),
+    );
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => {
+      window.clearTimeout(id);
+    });
+
     let scrollHeight = 400;
     Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
       configurable: true,
@@ -44,17 +62,47 @@ describe("UpdateDetailsModal", () => {
         progress={{
           status: "running",
           stage: "pulling",
-          logs: [{ timestamp: "2026-04-20T07:30:01Z", stream: "stdout", message: "pull image" }],
+          logs: [
+            { timestamp: "2026-04-20T07:30:01Z", stream: "stdout", message: "pull image" },
+            {
+              timestamp: "2026-04-20T07:30:02Z",
+              stream: "stdout",
+              message: "extract layer",
+            },
+            {
+              timestamp: "2026-04-20T07:30:03Z",
+              stream: "stderr",
+              message: "container started",
+            },
+          ],
         }}
         onApply={() => {}}
         onClose={() => {}}
       />,
     );
 
-    const stream = await screen.findByTestId("update-log-stream");
+    const stream = screen.getByTestId("update-log-stream");
+    expect(screen.getByText("pull image")).toBeInTheDocument();
+    expect(screen.queryByText("extract layer")).not.toBeInTheDocument();
+    expect(screen.queryByText("container started")).not.toBeInTheDocument();
     expect(stream.scrollTop).toBe(400);
 
     scrollHeight = 960;
+    await act(async () => {
+      vi.advanceTimersByTime(34);
+    });
+    expect(screen.getByText("extract layer")).toBeInTheDocument();
+    expect(screen.queryByText("container started")).not.toBeInTheDocument();
+    expect(stream.scrollTop).toBe(960);
+
+    scrollHeight = 1280;
+    await act(async () => {
+      vi.advanceTimersByTime(34);
+    });
+    expect(screen.getByText("container started")).toBeInTheDocument();
+    expect(stream.scrollTop).toBe(1280);
+
+    scrollHeight = 1600;
     rerender(
       <UpdateDetailsModal
         open
@@ -67,10 +115,16 @@ describe("UpdateDetailsModal", () => {
           logs: [
             { timestamp: "2026-04-20T07:30:01Z", stream: "stdout", message: "pull image" },
             {
-              timestamp: "2026-04-20T07:30:05Z",
+              timestamp: "2026-04-20T07:30:02Z",
+              stream: "stdout",
+              message: "extract layer",
+            },
+            {
+              timestamp: "2026-04-20T07:30:03Z",
               stream: "stderr",
               message: "container started",
             },
+            { timestamp: "2026-04-20T07:30:04Z", stream: "stdout", message: "verify service" },
           ],
         }}
         onApply={() => {}}
@@ -78,7 +132,12 @@ describe("UpdateDetailsModal", () => {
       />,
     );
 
-    expect(await screen.findByTestId("update-log-stream")).toHaveProperty("scrollTop", 960);
+    expect(screen.queryByText("verify service")).not.toBeInTheDocument();
+    await act(async () => {
+      vi.advanceTimersByTime(34);
+    });
+    expect(screen.getByText("verify service")).toBeInTheDocument();
+    expect(screen.getByTestId("update-log-stream")).toHaveProperty("scrollTop", 1600);
   });
 
   test("renders localized success styling when already up to date", async () => {

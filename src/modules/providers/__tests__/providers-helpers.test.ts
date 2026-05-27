@@ -101,6 +101,23 @@ describe("providers helpers", () => {
     ).toEqual([{ id: "gpt-4.1", owned_by: "openai" }, { id: "gpt-4o-mini" }]);
   });
 
+  test("normalizes discovered models from a JSON string payload", () => {
+    expect(
+      normalizeDiscoveredModels(
+        JSON.stringify({
+          object: "list",
+          data: [
+            { id: "qwen3.5-plus", object: "model", owned_by: "opencode" },
+            { id: "deepseek-v4-flash", object: "model", owned_by: "opencode" },
+          ],
+        }),
+      ),
+    ).toEqual([
+      { id: "qwen3.5-plus", owned_by: "opencode" },
+      { id: "deepseek-v4-flash", owned_by: "opencode" },
+    ]);
+  });
+
   test("normalizes usage sources and matches raw plus masked api key candidates", () => {
     const masked = maskApiKey("sk-openai-provider-1234567890");
     const normalized = normalizeUsageSourceId("sk-openai-provider-1234567890", maskApiKey);
