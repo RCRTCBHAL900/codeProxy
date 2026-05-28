@@ -2321,6 +2321,7 @@
     "col_status": "Status",
     "col_duration": "Duration",
     "col_first_token": "First Token",
+    "tokens_per_second": "Tokens/s",
     "col_input": "Input",
     "col_cache_read": "Cache Read",
     "col_output": "Output",

@@ -269,7 +269,9 @@ export function TooltipBubble({
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
-      <span className="block wrap-break-word text-slate-900 dark:text-white">{content}</span>
+      <span className="block whitespace-pre-line break-words [overflow-wrap:anywhere] text-slate-900 dark:text-white">
+        {content}
+      </span>
     </span>,
     document.body,
   );

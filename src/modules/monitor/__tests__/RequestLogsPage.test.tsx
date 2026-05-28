@@ -112,7 +112,7 @@ describe("RequestLogsPage", () => {
       </ThemeProvider>,
     );
 
-    expect(await screen.findByText("First Token")).toBeInTheDocument();
+    expect(await screen.findByText("Duration")).toBeInTheDocument();
     expect(await screen.findByText("183ms")).toBeInTheDocument();
   });
 

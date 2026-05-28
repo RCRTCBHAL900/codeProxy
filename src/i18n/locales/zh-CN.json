@@ -2567,6 +2567,7 @@
     "col_status": "状态",
     "col_duration": "耗时",
     "col_first_token": "首 Token",
+    "tokens_per_second": "每秒 Token",
     "col_input": "输入",
     "col_cache_read": "缓存命中",
     "col_output": "输出",
