@@ -274,6 +274,8 @@ export function ProvidersPage() {
 
   const loadUsage = useCallback(async () => {
     try {
+      const cachedUsage = getCachedData<Record<string, KeyStatBucket>>("usage-stats");
+      if (cachedUsage) setUsageStatsBySource(cachedUsage);
       const usage = await usageApi.getEntityStats(30, "all").catch(() => null);
       if (usage?.source) {
         const stats: Record<string, KeyStatBucket> = {};
@@ -287,6 +289,7 @@ export function ProvidersPage() {
           }
         });
         setUsageStatsBySource(stats);
+        setCachedData("usage-stats", stats);
       }
     } catch {}
   }, []);
