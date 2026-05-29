@@ -2360,7 +2360,16 @@
     "prev_page": "Previous page",
     "next_page": "Next page",
     "last_page": "Last page",
-    "rows_per_page": "Rows per page"
+    "rows_per_page": "Rows per page",
+    "reset_filters": "Reset filters",
+    "selected_count": "{{count}} selected",
+    "select_filtered": "Select shown",
+    "deselect_filtered": "Clear shown",
+    "no_filter_results": "No matching filters",
+    "clear_key_filter": "Clear key filter",
+    "clear_model_filter": "Clear model filter",
+    "clear_channel_filter": "Clear channel filter",
+    "clear_status_filter": "Clear status filter"
   },
   "ccswitch": {
     "import_to_ccswitch": "Import to CC Switch",

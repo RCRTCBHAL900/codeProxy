@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { Check, ChevronDown, Search } from "lucide-react";
+import { Check, ChevronDown, Search, X } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   cn,
@@ -48,6 +48,11 @@ export interface SearchableCheckboxMultiSelectProps {
   "aria-label"?: string;
   className?: string;
   size?: ControlSize;
+  clearLabel?: string;
+  onClear?: () => void;
+  showClearButton?: boolean;
+  maxSummaryItems?: number;
+  mobileBreakpoint?: number;
 }
 
 function optionText(option: SearchableCheckboxMultiSelectOption): string {
@@ -69,6 +74,11 @@ export function SearchableCheckboxMultiSelect({
   "aria-label": ariaLabel,
   className,
   size = "default",
+  clearLabel,
+  onClear,
+  showClearButton = true,
+  maxSummaryItems = 2,
+  mobileBreakpoint = 640,
 }: SearchableCheckboxMultiSelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -105,6 +115,41 @@ export function SearchableCheckboxMultiSelect({
     const rect = trigger.getBoundingClientRect();
     const gap = 6;
     const maxHeight = 360;
+
+    // Mobile: use viewport-safe positioning
+    const isNarrow = window.innerWidth < mobileBreakpoint;
+    if (isNarrow) {
+      const maxHeightMobile = Math.min(420, window.innerHeight * 0.7);
+      const spaceBelow = window.innerHeight - rect.bottom - gap;
+      const spaceAbove = rect.top - gap;
+      const openAbove = spaceBelow < maxHeightMobile && spaceAbove > spaceBelow;
+
+      if (openAbove) {
+        setDropdownPlacement("top");
+        setDropdownStyle({
+          position: "fixed",
+          left: 12,
+          right: 12,
+          width: "auto",
+          maxHeight: Math.min(maxHeightMobile, spaceAbove),
+          bottom: window.innerHeight - rect.top + gap,
+          zIndex: 99999,
+        });
+        return;
+      }
+      setDropdownPlacement("bottom");
+      setDropdownStyle({
+        position: "fixed",
+        left: 12,
+        right: 12,
+        width: "auto",
+        maxHeight: Math.min(maxHeightMobile, spaceBelow),
+        top: Math.min(rect.bottom + gap, window.innerHeight - maxHeightMobile - 12),
+        zIndex: 99999,
+      });
+      return;
+    }
+
     const spaceBelow = window.innerHeight - rect.bottom - gap;
     const spaceAbove = rect.top - gap;
     const openAbove = spaceBelow < maxHeight && spaceAbove > spaceBelow;
@@ -131,7 +176,7 @@ export function SearchableCheckboxMultiSelect({
       maxHeight: Math.min(maxHeight, spaceBelow),
       zIndex: 99999,
     });
-  }, []);
+  }, [mobileBreakpoint]);
 
   useEffect(() => {
     if (!open) return;
@@ -209,51 +254,74 @@ export function SearchableCheckboxMultiSelect({
   const selectedSummary = useMemo(() => {
     if (value.length === 0) return placeholder;
     const labels = value
-      .slice(0, 2)
+      .slice(0, maxSummaryItems)
       .map((item) =>
         optionText(options.find((option) => option.value === item) ?? { value: item, label: item }),
       )
       .join(", ");
-    return value.length > 2 ? `${labels} +${value.length - 2}` : labels;
-  }, [options, placeholder, value]);
+    return value.length > maxSummaryItems ? `${labels} +${value.length - maxSummaryItems}` : labels;
+  }, [maxSummaryItems, options, placeholder, value]);
+
+  const handleClear = useCallback(
+    (event: React.MouseEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onClear?.();
+      commitSelection([]);
+      setQuery("");
+    },
+    [commitSelection, onClear],
+  );
 
   return (
     <>
-      <button
-        ref={triggerRef}
-        type="button"
-        role="combobox"
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        aria-label={ariaLabel}
-        disabled={disabled}
-        onClick={() => {
-          if (!open) updatePosition();
-          setOpen((current) => !current);
-        }}
-        className={cn(
-          getSelectTriggerBase(size),
-          "w-full justify-between text-left",
-          disabled && selectTriggerDisabled,
-          className,
-        )}
-      >
-        <span className={cn("truncate", value.length === 0 && "text-slate-400 dark:text-white/35")}>
-          {selectedSummary}
-        </span>
-        <span className="flex shrink-0 items-center gap-2">
-          {value.length > 0 ? (
-            <span className="rounded-md bg-sky-50 px-1.5 py-0.5 text-[11px] font-semibold text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">
-              {selectedCountLabel(value.length)}
-            </span>
-          ) : null}
-          <ChevronDown
-            size={14}
-            className={cn(selectChevron, open && "rotate-180")}
-            aria-hidden="true"
-          />
-        </span>
-      </button>
+      <div className={cn("relative", className)}>
+        <button
+          ref={triggerRef}
+          type="button"
+          role="combobox"
+          aria-expanded={open}
+          aria-haspopup="listbox"
+          aria-label={ariaLabel}
+          disabled={disabled}
+          onClick={() => {
+            if (!open) updatePosition();
+            setOpen((current) => !current);
+          }}
+          className={cn(
+            getSelectTriggerBase(size),
+            "w-full justify-between text-left",
+            value.length > 0 && showClearButton && "pr-9",
+            disabled && selectTriggerDisabled,
+          )}
+        >
+          <span className={cn("truncate", value.length === 0 && "text-slate-400 dark:text-white/35")}>
+            {selectedSummary}
+          </span>
+          <span className="flex shrink-0 items-center gap-2">
+            {value.length > 0 ? (
+              <span className="rounded-md bg-sky-50 px-1.5 py-0.5 text-[11px] font-semibold text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">
+                {selectedCountLabel(value.length)}
+              </span>
+            ) : null}
+            <ChevronDown
+              size={14}
+              className={cn(selectChevron, open && "rotate-180")}
+              aria-hidden="true"
+            />
+          </span>
+        </button>
+        {value.length > 0 && showClearButton && !disabled ? (
+          <button
+            type="button"
+            aria-label={clearLabel}
+            onClick={handleClear}
+            className="absolute right-7 top-1/2 -translate-y-1/2 flex items-center justify-center w-5 h-5 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-white/10 dark:hover:text-slate-300 transition-colors"
+          >
+            <X size={12} />
+          </button>
+        ) : null}
+      </div>
 
       {createPortal(
         <AnimatePresence>

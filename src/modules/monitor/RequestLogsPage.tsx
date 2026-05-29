@@ -1,17 +1,17 @@
 import { useTranslation } from "react-i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Filter, LoaderCircle, RefreshCw, ScrollText } from "lucide-react";
+import { LoaderCircle, RefreshCw, ScrollText } from "lucide-react";
 import { usageApi } from "@/lib/http/apis";
 import type { ClearUsageLogsPayload, UsageLogItem, UsageLogsResponse } from "@/lib/http/apis/usage";
 import { Button } from "@/modules/ui/Button";
 import { Checkbox } from "@/modules/ui/Checkbox";
 import { Modal } from "@/modules/ui/Modal";
 import { useToast } from "@/modules/ui/ToastProvider";
-import { Select } from "@/modules/ui/Select";
-import { SearchableSelect } from "@/modules/ui/SearchableSelect";
 import { DataTable } from "@/modules/ui/DataTable";
 import { LogContentModal } from "@/modules/monitor/LogContentModal";
 import { ErrorDetailModal } from "@/modules/monitor/ErrorDetailModal";
+import { RequestLogsFilters } from "@/modules/monitor/RequestLogsFilters";
+import type { SearchableCheckboxMultiSelectOption } from "@/modules/ui/SearchableCheckboxMultiSelect";
 import {
   buildRequestLogKeyOptions,
   buildRequestLogsColumns,
@@ -22,7 +22,7 @@ import {
   type RequestLogsRow as LogRow,
   type TimeRange,
 } from "@/modules/monitor/requestLogsShared";
-type StatusFilter = "" | "success" | "failed";
+type StatusFilterValue = "success" | "failed";
 const DEFAULT_LOG_STATS = { total: 0, success_rate: 0, total_tokens: 0, total_cost: 0 };
 const DEFAULT_CLEAR_OPTIONS: ClearUsageLogsPayload = {
   clear_body_content: true,
@@ -95,23 +95,35 @@ export function RequestLogsPage() {
     total_cost: number;
   }>(DEFAULT_LOG_STATS);
 
-  // Filters
+  // Multi-value filters
   const [timeRange, setTimeRange] = useState<TimeRange>(7);
-  const [apiQuery, setApiQuery] = useState("");
-  const [modelQuery, setModelQuery] = useState("");
-  const [channelQuery, setChannelQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("");
+  const [selectedApiKeys, setSelectedApiKeys] = useState<string[]>([]);
+  const [selectedModels, setSelectedModels] = useState<string[]>([]);
+  const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
+  const [selectedStatuses, setSelectedStatuses] = useState<StatusFilterValue[]>([]);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
   const [clearingLogs, setClearingLogs] = useState(false);
   const [clearOptions, setClearOptions] = useState<ClearUsageLogsPayload>(DEFAULT_CLEAR_OPTIONS);
 
-  const fetchInFlightRef = useRef(false);
+  const requestSeqRef = useRef(0);
+
+  const hasActiveFilters =
+    selectedApiKeys.length > 0 ||
+    selectedModels.length > 0 ||
+    selectedChannels.length > 0 ||
+    selectedStatuses.length > 0;
+
+  const resetFilters = useCallback(() => {
+    setSelectedApiKeys([]);
+    setSelectedModels([]);
+    setSelectedChannels([]);
+    setSelectedStatuses([]);
+  }, []);
 
   // Fetch logs from backend (server-side pagination)
   const fetchLogs = useCallback(
     async (page: number, size: number) => {
-      if (fetchInFlightRef.current) return;
-      fetchInFlightRef.current = true;
+      const seq = ++requestSeqRef.current;
       setLoading(true);
 
       try {
@@ -119,11 +131,13 @@ export function RequestLogsPage() {
           page,
           size,
           days: timeRange,
-          api_key: apiQuery || undefined,
-          model: modelQuery || undefined,
-          channel: channelQuery || undefined,
-          status: statusFilter || undefined,
+          api_keys: selectedApiKeys.length > 0 ? selectedApiKeys : undefined,
+          models: selectedModels.length > 0 ? selectedModels : undefined,
+          channels: selectedChannels.length > 0 ? selectedChannels : undefined,
+          statuses: selectedStatuses.length > 0 ? selectedStatuses : undefined,
         });
+
+        if (seq !== requestSeqRef.current) return;
 
         setRawItems(resp.items ?? []);
         setTotalCount(resp.total ?? 0);
@@ -150,11 +164,10 @@ export function RequestLogsPage() {
         const message = err instanceof Error ? err.message : t("request_logs.refresh_failed");
         notify({ type: "error", message });
       } finally {
-        fetchInFlightRef.current = false;
         setLoading(false);
       }
     },
-    [timeRange, apiQuery, modelQuery, channelQuery, statusFilter, notify, t],
+    [timeRange, selectedApiKeys, selectedModels, selectedChannels, selectedStatuses, notify, t],
   );
 
   // Derive display rows from raw items
@@ -184,29 +197,39 @@ export function RequestLogsPage() {
   // Fetch page 1 when filters change
   useEffect(() => {
     fetchLogs(1, pageSize);
-  }, [timeRange, apiQuery, modelQuery, channelQuery, statusFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [timeRange, selectedApiKeys, selectedModels, selectedChannels, selectedStatuses]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Build options from backend filter data
-  const keyOptions = useMemo(() => {
-    return buildRequestLogKeyOptions(filterOptions.api_keys, filterOptions.api_key_names ?? {}, {
+  // Build multi-select options from backend filter data (exclude the "" "all" option)
+  const keyOptions = useMemo<SearchableCheckboxMultiSelectOption[]>(() => {
+    const opts = buildRequestLogKeyOptions(filterOptions.api_keys, filterOptions.api_key_names ?? {}, {
       allKeys: t("request_logs.all_keys"),
       systemCall: t("request_logs.system_call"),
     });
+    return opts.filter((option) => option.value !== "");
   }, [filterOptions.api_keys, filterOptions.api_key_names, t]);
 
-  const modelOptions = useMemo(() => {
-    return [
-      { value: "", label: t("request_logs.all_models") },
-      ...filterOptions.models.map((m) => ({ value: m, label: m })),
-    ];
-  }, [filterOptions.models, t]);
+  const modelOptions = useMemo<SearchableCheckboxMultiSelectOption[]>(() => {
+    return filterOptions.models.map((m) => ({
+      value: m,
+      label: m,
+      searchText: m,
+    }));
+  }, [filterOptions.models]);
 
-  const channelOptions = useMemo(() => {
+  const channelOptions = useMemo<SearchableCheckboxMultiSelectOption[]>(() => {
+    return filterOptions.channels.map((ch) => ({
+      value: ch,
+      label: ch,
+      searchText: ch,
+    }));
+  }, [filterOptions.channels]);
+
+  const statusOptions = useMemo<SearchableCheckboxMultiSelectOption[]>(() => {
     return [
-      { value: "", label: t("request_logs.all_channels") },
-      ...filterOptions.channels.map((ch) => ({ value: ch, label: ch })),
+      { value: "success", label: t("request_logs.status_success"), searchText: "success" },
+      { value: "failed", label: t("request_logs.status_failed"), searchText: "failed" },
     ];
-  }, [filterOptions.channels, t]);
+  }, [t]);
 
   const lastUpdatedText = useMemo(() => {
     if (loading) return t("request_logs.refreshing");
@@ -321,83 +344,25 @@ export function RequestLogsPage() {
         </div>
 
         {/* 筛选 + 统计 */}
-        <div className="border-t border-slate-100 px-5 py-3 dark:border-neutral-800/60">
-          <div className="grid gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-2">
-            <div className="grid grid-cols-1 gap-2 sm:flex sm:items-center sm:gap-2">
-              <SearchableSelect
-                value={apiQuery}
-                onChange={setApiQuery}
-                options={keyOptions}
-                placeholder={t("request_logs.all_keys_placeholder")}
-                searchPlaceholder={t("request_logs.search_keys")}
-                aria-label={t("request_logs.filter_key")}
-                className="w-full sm:w-auto"
-              />
-              <SearchableSelect
-                value={modelQuery}
-                onChange={setModelQuery}
-                options={modelOptions}
-                placeholder={t("request_logs.all_models_placeholder")}
-                searchPlaceholder={t("request_logs.search_models")}
-                aria-label={t("request_logs.filter_model")}
-                className="w-full sm:w-auto"
-              />
-              <SearchableSelect
-                value={channelQuery}
-                onChange={setChannelQuery}
-                options={channelOptions}
-                placeholder={t("request_logs.all_channels_placeholder")}
-                searchPlaceholder={t("request_logs.search_channels")}
-                aria-label={t("request_logs.filter_channel")}
-                className="w-full sm:w-auto"
-              />
-              <Select
-                value={statusFilter}
-                onChange={(v) => setStatusFilter(v as StatusFilter)}
-                options={[
-                  { value: "", label: t("request_logs.all_status") },
-                  { value: "success", label: t("request_logs.status_success") },
-                  { value: "failed", label: t("request_logs.status_failed") },
-                ]}
-                aria-label={t("request_logs.filter_status")}
-                name="statusFilter"
-                className="w-full sm:w-auto"
-              />
-            </div>
-
-            <div className="hidden sm:block sm:flex-1" />
-
-            <div className="grid grid-cols-2 items-center gap-x-3 gap-y-1.5 text-xs text-slate-600 dark:text-white/55 sm:flex sm:items-center sm:gap-1.5">
-              <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                <Filter size={12} aria-hidden="true" />
-                {t("request_logs.records_count", {
-                  count: stats.total.toLocaleString(),
-                } as Record<string, string>)}
-              </span>
-
-              <span className="inline-flex items-center justify-end gap-1.5 whitespace-nowrap sm:justify-start">
-                {t("common.success_rate")}
-                <span className="font-mono tabular-nums">{stats.success_rate.toFixed(1)}%</span>
-              </span>
-
-              <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                {t("request_logs.col_total_token")}
-                <span className="font-mono tabular-nums">
-                  {stats.total_tokens.toLocaleString()}
-                </span>
-              </span>
-
-              <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                {t("request_logs.col_cost")}
-                <span className="font-mono tabular-nums">${stats.total_cost.toFixed(4)}</span>
-              </span>
-
-              <span className="col-span-2 text-[11px] text-slate-400 dark:text-white/40 sm:col-span-1 sm:text-xs">
-                {lastUpdatedText}
-              </span>
-            </div>
-          </div>
-        </div>
+        <RequestLogsFilters
+          keyOptions={keyOptions}
+          modelOptions={modelOptions}
+          channelOptions={channelOptions}
+          statusOptions={statusOptions}
+          selectedApiKeys={selectedApiKeys}
+          selectedModels={selectedModels}
+          selectedChannels={selectedChannels}
+          selectedStatuses={selectedStatuses}
+          onApiKeysChange={setSelectedApiKeys}
+          onModelsChange={setSelectedModels}
+          onChannelsChange={setSelectedChannels}
+          onStatusesChange={setSelectedStatuses}
+          onResetFilters={resetFilters}
+          hasActiveFilters={hasActiveFilters}
+          stats={stats}
+          lastUpdatedText={lastUpdatedText}
+          loading={loading}
+        />
 
         {/* 表格区域 — 自适应视口高度，内部滚动 */}
         <div className="relative min-h-[360px] h-[calc(100dvh-300px)] overflow-hidden px-5">

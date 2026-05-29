@@ -2606,7 +2606,16 @@
     "prev_page": "上一页",
     "next_page": "下一页",
     "last_page": "末页",
-    "rows_per_page": "每页行数"
+    "rows_per_page": "每页行数",
+    "reset_filters": "重置筛选",
+    "selected_count": "{{count}} 项",
+    "select_filtered": "选择当前结果",
+    "deselect_filtered": "清除当前结果",
+    "no_filter_results": "没有匹配的筛选项",
+    "clear_key_filter": "清空密钥筛选",
+    "clear_model_filter": "清空模型筛选",
+    "clear_channel_filter": "清空渠道筛选",
+    "clear_status_filter": "清空状态筛选"
   },
   "ccswitch": {
     "import_to_ccswitch": "导入到 CC Switch",
