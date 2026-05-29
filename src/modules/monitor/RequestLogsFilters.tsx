@@ -80,6 +80,7 @@ export function RequestLogsFilters({
               noResultsLabel={t("request_logs.no_filter_results")}
               aria-label={t("request_logs.filter_key")}
               clearLabel={t("request_logs.clear_key_filter")}
+              showClearButton
               size="sm"
             />
           </div>
@@ -98,6 +99,7 @@ export function RequestLogsFilters({
               noResultsLabel={t("request_logs.no_filter_results")}
               aria-label={t("request_logs.filter_model")}
               clearLabel={t("request_logs.clear_model_filter")}
+              showClearButton
               size="sm"
             />
           </div>
@@ -116,6 +118,7 @@ export function RequestLogsFilters({
               noResultsLabel={t("request_logs.no_filter_results")}
               aria-label={t("request_logs.filter_channel")}
               clearLabel={t("request_logs.clear_channel_filter")}
+              showClearButton
               size="sm"
             />
           </div>

@@ -161,10 +161,11 @@ export function RequestLogsPage() {
         });
         setLastUpdatedAt(Date.now());
       } catch (err) {
+        if (seq !== requestSeqRef.current) return;
         const message = err instanceof Error ? err.message : t("request_logs.refresh_failed");
         notify({ type: "error", message });
       } finally {
-        setLoading(false);
+        if (seq === requestSeqRef.current) setLoading(false);
       }
     },
     [timeRange, selectedApiKeys, selectedModels, selectedChannels, selectedStatuses, notify, t],

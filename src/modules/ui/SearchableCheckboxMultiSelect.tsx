@@ -76,7 +76,7 @@ export function SearchableCheckboxMultiSelect({
   size = "default",
   clearLabel,
   onClear,
-  showClearButton = true,
+  showClearButton = false,
   maxSummaryItems = 2,
   mobileBreakpoint = 640,
 }: SearchableCheckboxMultiSelectProps) {
@@ -275,7 +275,7 @@ export function SearchableCheckboxMultiSelect({
 
   return (
     <>
-      <div className={cn("relative", className)}>
+      <div className={cn("group/multi-select relative", className)}>
         <button
           ref={triggerRef}
           type="button"
@@ -291,11 +291,10 @@ export function SearchableCheckboxMultiSelect({
           className={cn(
             getSelectTriggerBase(size),
             "w-full justify-between text-left",
-            value.length > 0 && showClearButton && "pr-9",
             disabled && selectTriggerDisabled,
           )}
         >
-          <span className={cn("truncate", value.length === 0 && "text-slate-400 dark:text-white/35")}>
+          <span className={cn("min-w-0 flex-1 truncate text-left", value.length === 0 && "text-slate-400 dark:text-white/35")}>
             {selectedSummary}
           </span>
           <span className="flex shrink-0 items-center gap-2">
@@ -306,7 +305,11 @@ export function SearchableCheckboxMultiSelect({
             ) : null}
             <ChevronDown
               size={14}
-              className={cn(selectChevron, open && "rotate-180")}
+              className={cn(
+                selectChevron,
+                value.length > 0 && showClearButton && "group-hover/multi-select:opacity-0 group-focus-within/multi-select:opacity-0",
+                open && "rotate-180",
+              )}
               aria-hidden="true"
             />
           </span>
@@ -316,7 +319,14 @@ export function SearchableCheckboxMultiSelect({
             type="button"
             aria-label={clearLabel}
             onClick={handleClear}
-            className="absolute right-7 top-1/2 -translate-y-1/2 flex items-center justify-center w-5 h-5 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-white/10 dark:hover:text-slate-300 transition-colors"
+            className={cn(
+              "absolute right-3 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded",
+              "text-slate-400 opacity-0 pointer-events-none transition-colors",
+              "group-hover/multi-select:pointer-events-auto group-hover/multi-select:opacity-100",
+              "group-focus-within/multi-select:pointer-events-auto group-focus-within/multi-select:opacity-100",
+              "hover:bg-slate-100 hover:text-slate-600",
+              "dark:hover:bg-white/10 dark:hover:text-slate-300",
+            )}
           >
             <X size={12} />
           </button>
