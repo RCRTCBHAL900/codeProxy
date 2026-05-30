@@ -35,7 +35,6 @@ interface UseAuthFilesQuotaStateOptions {
   tab: "files" | "excluded" | "alias";
   pageItems: AuthFileItem[];
   visibleScopeKey: string;
-  navigationType: "POP" | "PUSH" | "REPLACE";
   loading: boolean;
   setFiles: Dispatch<SetStateAction<AuthFileItem[]>>;
   setDetailFile: Dispatch<SetStateAction<AuthFileItem | null>>;
@@ -46,7 +45,6 @@ export function useAuthFilesQuotaState({
   tab,
   pageItems,
   visibleScopeKey,
-  navigationType,
   loading,
   setFiles,
   setDetailFile,
@@ -493,7 +491,7 @@ export function useAuthFilesQuotaState({
     visibleScopeKeyRef.current = visibleScopeKey;
 
     const firstVisibleScope = previousVisibleScopeKey === null;
-    const initialVisibleScope = firstVisibleScope && navigationType !== "POP";
+    const initialVisibleScope = firstVisibleScope;
     const switchedVisibleScope = !firstVisibleScope && previousVisibleScopeKey !== visibleScopeKey;
     if (!initialVisibleScope && !switchedVisibleScope && quotaAutoRefreshMs <= 0) return;
 
@@ -526,7 +524,6 @@ export function useAuthFilesQuotaState({
     loading,
     markQuotaTargetsLoading,
     pageItems,
-    navigationType,
     quotaAutoRefreshMs,
     resolveQuotaTargets,
     runQuotaRefreshBatch,

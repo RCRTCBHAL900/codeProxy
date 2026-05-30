@@ -139,7 +139,7 @@ const sanitizeAuthFileRestrictionsForCache = (
 export const readAuthFilesUiState = (): AuthFilesUiState | null => {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.sessionStorage.getItem(AUTH_FILES_UI_STATE_KEY);
+    const raw = window.localStorage.getItem(AUTH_FILES_UI_STATE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as AuthFilesUiState;
     return parsed && typeof parsed === "object" ? parsed : null;
@@ -151,7 +151,7 @@ export const readAuthFilesUiState = (): AuthFilesUiState | null => {
 export const writeAuthFilesUiState = (state: AuthFilesUiState) => {
   if (typeof window === "undefined") return;
   try {
-    window.sessionStorage.setItem(AUTH_FILES_UI_STATE_KEY, JSON.stringify(state));
+    window.localStorage.setItem(AUTH_FILES_UI_STATE_KEY, JSON.stringify(state));
   } catch {
     // ignore
   }
@@ -308,7 +308,7 @@ const sanitizeQuotaByFileNameForCache = (
 export const readAuthFilesDataCache = (): AuthFilesDataCache | null => {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.sessionStorage.getItem(AUTH_FILES_DATA_CACHE_KEY);
+    const raw = window.localStorage.getItem(AUTH_FILES_DATA_CACHE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<AuthFilesDataCache>;
     const files = Array.isArray(parsed?.files) ? (parsed.files as AuthFileItem[]) : null;
@@ -335,14 +335,14 @@ export const readAuthFilesDataCache = (): AuthFilesDataCache | null => {
 export const writeAuthFilesDataCache = (cache: AuthFilesDataCache) => {
   if (typeof window === "undefined") return;
   try {
-    const raw = window.sessionStorage.getItem(AUTH_FILES_DATA_CACHE_KEY);
+    const raw = window.localStorage.getItem(AUTH_FILES_DATA_CACHE_KEY);
     const previous = raw ? (JSON.parse(raw) as Partial<AuthFilesDataCache>) : null;
     const fileNames = new Set(cache.files.map((file) => file.name).filter(Boolean));
     const quotaByFileName = sanitizeQuotaByFileNameForCache(
       cache.quotaByFileName ?? previous?.quotaByFileName,
       fileNames,
     );
-    window.sessionStorage.setItem(
+    window.localStorage.setItem(
       AUTH_FILES_DATA_CACHE_KEY,
       JSON.stringify({
         savedAtMs: cache.savedAtMs,
