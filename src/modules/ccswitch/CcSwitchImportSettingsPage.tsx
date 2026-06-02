@@ -109,6 +109,7 @@ export function CcSwitchImportSettingsPage() {
         if (cancelled) return;
         setChannelGroupOptions(
           items
+            .filter((item) => item.implicit !== true || item.name === "default")
             .map((item) => ({
               value: String(item.name ?? "")
                 .trim()

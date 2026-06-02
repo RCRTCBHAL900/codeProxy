@@ -764,4 +764,26 @@ describe("CcSwitchImportSettingsPage", () => {
 
     await waitFor(() => expect(replaceConfigs).toHaveBeenCalledWith([]));
   });
+
+  test("filters out implicit channel groups except default from the CC Switch dropdown", async () => {
+    listChannelGroups.mockResolvedValue([
+      { name: "pro", description: "Pro route", "path-routes": ["/pro"] },
+      { name: "default", implicit: true },
+      { name: "nvidia", implicit: true },
+    ]);
+    renderPage();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: /new config/i }));
+
+    const dialog = await screen.findByRole("dialog", { name: /new cc switch config/i });
+    await user.click(within(dialog).getByRole("combobox", { name: /select channel group/i }));
+
+    const options = await screen.findAllByRole("option");
+    const optionLabels = options.map((el) => el.textContent ?? "");
+
+    expect(optionLabels.some((text) => text.includes("pro"))).toBe(true);
+    expect(optionLabels.some((text) => text.includes("default"))).toBe(true);
+    expect(optionLabels.some((text) => text.includes("nvidia"))).toBe(false);
+  });
 });
