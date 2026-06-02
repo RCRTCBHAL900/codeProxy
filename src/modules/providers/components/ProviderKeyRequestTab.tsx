@@ -28,6 +28,12 @@ const SectionCard = ({ children, className }: { children: React.ReactNode; class
 const OPENCODE_GO_MODELS_URL = "https://opencode.ai/zen/go/v1/models";
 const OPENCODE_GO_CHAT_URL = "https://opencode.ai/zen/go/v1/chat/completions";
 const OPENCODE_GO_MESSAGES_URL = "https://opencode.ai/zen/go/v1/messages";
+const OPENCODE_GO_SERVER_ID_PATTERN = /^[a-f0-9]{64}$/i;
+
+const isLikelyInvalidOpenCodeGoWorkspaceInput = (value: string): boolean => {
+  const trimmed = value.trim();
+  return trimmed.toLowerCase() === "default" || OPENCODE_GO_SERVER_ID_PATTERN.test(trimmed);
+};
 
 interface ProviderKeyRequestTabProps {
   keyDraft: ProviderKeyDraft;
@@ -64,6 +70,11 @@ export function ProviderKeyRequestTab({
 
   const queryOpenCodeUsage = async () => {
     if (!isOpenCodeGo) return;
+    if (isLikelyInvalidOpenCodeGoWorkspaceInput(keyDraft.workspaceId)) {
+      setOpenCodeUsage(null);
+      setOpenCodeUsageError(t("providers.opencode_go_workspace_id_invalid"));
+      return;
+    }
     setOpenCodeUsageLoading(true);
     setOpenCodeUsageError(null);
     try {
@@ -76,6 +87,11 @@ export function ProviderKeyRequestTab({
         "api-key": keyDraft.apiKey.trim(),
       });
       setOpenCodeUsage(result.usage);
+      setKeyDraft((prev) =>
+        result.workspace_id && result.workspace_id !== prev.workspaceId
+          ? { ...prev, workspaceId: result.workspace_id }
+          : prev,
+      );
     } catch (err: unknown) {
       setOpenCodeUsage(null);
       setOpenCodeUsageError(
@@ -140,8 +156,11 @@ export function ProviderKeyRequestTab({
                   const val = e.currentTarget.value;
                   setKeyDraft((prev) => ({ ...prev, workspaceId: val }));
                 }}
-                placeholder="wrk_..."
+                placeholder={t("providers.opencode_go_workspace_id_placeholder")}
               />
+              <p className="text-xs text-slate-500 dark:text-white/55">
+                {t("providers.opencode_go_workspace_id_hint")}
+              </p>
             </div>
             <div className="space-y-2">
               <p className="text-xs font-semibold text-slate-700 dark:text-white/75">
