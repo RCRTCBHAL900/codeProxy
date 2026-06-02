@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 const getMock = vi.fn();
+const postMock = vi.fn();
 const putMock = vi.fn();
 const deleteMock = vi.fn();
 
 vi.mock("@/lib/http/client", () => ({
   apiClient: {
     get: getMock,
+    post: postMock,
     put: putMock,
     delete: deleteMock,
   },
@@ -15,6 +17,7 @@ vi.mock("@/lib/http/client", () => ({
 describe("providersApi OpenCode Go", () => {
   beforeEach(() => {
     getMock.mockReset();
+    postMock.mockReset();
     putMock.mockReset();
     deleteMock.mockReset();
   });
@@ -34,6 +37,8 @@ describe("providersApi OpenCode Go", () => {
           models: [{ name: "should-not-surface" }],
           "excluded-models": ["disabled-model"],
           "vision-fallback-model": "qwen3.5-plus",
+          "workspace-id": "wrk_123",
+          "auth-cookie": "auth-token",
         },
       ],
     });
@@ -51,6 +56,8 @@ describe("providersApi OpenCode Go", () => {
         headers: { "X-Test": "yes" },
         excludedModels: ["disabled-model"],
         visionFallbackModel: "qwen3.5-plus",
+        workspaceId: "wrk_123",
+        authCookie: "auth-token",
       },
     ]);
   });
@@ -97,6 +104,8 @@ describe("providersApi OpenCode Go", () => {
         models: [{ name: "should-not-save" }],
         excludedModels: ["disabled-model"],
         visionFallbackModel: "qwen3.5-plus",
+        workspaceId: "wrk_123",
+        authCookie: "auth-token",
       },
     ]);
 
@@ -110,6 +119,8 @@ describe("providersApi OpenCode Go", () => {
         headers: { "X-Test": "yes" },
         "excluded-models": ["disabled-model"],
         "vision-fallback-model": "qwen3.5-plus",
+        "workspace-id": "wrk_123",
+        "auth-cookie": "auth-token",
       },
     ]);
 
@@ -117,6 +128,31 @@ describe("providersApi OpenCode Go", () => {
 
     expect(deleteMock).toHaveBeenCalledWith("/opencode-go-api-key", undefined, {
       params: { "api-key": "sk-go" },
+    });
+  });
+
+  test("queries OpenCode Go usage with dashboard credentials", async () => {
+    const { providersApi } = await import("@/lib/http/apis/providers");
+    postMock.mockResolvedValue({
+      workspace_id: "wrk_123",
+      usage: [{ type: "rolling", label: "Rolling", percentage: 3, resets_in: "31 minutes" }],
+    });
+
+    await expect(
+      providersApi.queryOpenCodeGoUsage({
+        "workspace-id": "wrk_123",
+        "auth-cookie": "auth-token",
+        "proxy-id": "hk",
+      }),
+    ).resolves.toEqual({
+      workspace_id: "wrk_123",
+      usage: [{ type: "rolling", label: "Rolling", percentage: 3, resets_in: "31 minutes" }],
+    });
+
+    expect(postMock).toHaveBeenCalledWith("/opencode-go-api-key/usage", {
+      "workspace-id": "wrk_123",
+      "auth-cookie": "auth-token",
+      "proxy-id": "hk",
     });
   });
 

@@ -145,6 +145,12 @@ export function useProviderKeyEditor({
       ...(isOpenCodeGo && keyDraft.visionFallbackModel.trim()
         ? { visionFallbackModel: keyDraft.visionFallbackModel.trim() }
         : {}),
+      ...(isOpenCodeGo && keyDraft.workspaceId.trim()
+        ? { workspaceId: keyDraft.workspaceId.trim() }
+        : {}),
+      ...(isOpenCodeGo && keyDraft.authCookie.trim()
+        ? { authCookie: keyDraft.authCookie.trim() }
+        : {}),
       ...(!isOpenCodeGo && modelCommit.models ? { models: modelCommit.models } : {}),
       ...(editKeyType === "claude" && keyDraft.skipAnthropicProcessing
         ? { skipAnthropicProcessing: true }

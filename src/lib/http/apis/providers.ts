@@ -3,6 +3,7 @@ import type {
   BedrockAuthMode,
   BedrockProviderConfig,
   OpenAIProvider,
+  OpenCodeGoUsageResponse,
   ProviderSimpleConfig,
 } from "@/lib/http/types";
 import {
@@ -135,6 +136,10 @@ export const providersApi = {
         );
         const visionFallbackModel =
           normalizeString(item["vision-fallback-model"] ?? item.visionFallbackModel) ?? undefined;
+        const workspaceId =
+          normalizeString(item["workspace-id"] ?? item.workspaceId) ?? undefined;
+        const authCookie =
+          normalizeString(item["auth-cookie"] ?? item.authCookie) ?? undefined;
         return {
           apiKey,
           ...(name ? { name } : {}),
@@ -144,6 +149,8 @@ export const providersApi = {
           ...(headers ? { headers } : {}),
           ...(excludedModels ? { excludedModels } : {}),
           ...(visionFallbackModel ? { visionFallbackModel } : {}),
+          ...(workspaceId ? { workspaceId } : {}),
+          ...(authCookie ? { authCookie } : {}),
         };
       })
       .filter(Boolean) as ProviderSimpleConfig[];
@@ -157,6 +164,16 @@ export const providersApi = {
 
   deleteOpenCodeGoConfig: (apiKey: string) =>
     apiClient.delete("/opencode-go-api-key", undefined, { params: { "api-key": apiKey } }),
+
+  queryOpenCodeGoUsage: (payload: {
+    "workspace-id"?: string;
+    "auth-cookie"?: string;
+    "proxy-id"?: string;
+    "proxy-url"?: string;
+    name?: string;
+    "api-key"?: string;
+    index?: number;
+  }) => apiClient.post<OpenCodeGoUsageResponse>("/opencode-go-api-key/usage", payload),
 
   async getClaudeConfigs(): Promise<ProviderSimpleConfig[]> {
     const data = await apiClient.get("/claude-api-key");

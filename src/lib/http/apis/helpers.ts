@@ -146,6 +146,10 @@ export const serializeOpenCodeGoKey = (config: ProviderSimpleConfig) => {
   }
   const visionFallbackModel = normalizeString(config.visionFallbackModel);
   if (visionFallbackModel) payload["vision-fallback-model"] = visionFallbackModel;
+  const workspaceId = normalizeString(config.workspaceId);
+  if (workspaceId) payload["workspace-id"] = workspaceId;
+  const authCookie = normalizeString(config.authCookie);
+  if (authCookie) payload["auth-cookie"] = authCookie;
   return payload;
 };
 

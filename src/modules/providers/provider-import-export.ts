@@ -182,6 +182,12 @@ const normalizeSimpleItem = (
             )!,
           }
         : {}),
+      ...(kind === "opencode-go" && normalizeString(value["workspace-id"] ?? value.workspaceId)
+        ? { workspaceId: normalizeString(value["workspace-id"] ?? value.workspaceId)! }
+        : {}),
+      ...(kind === "opencode-go" && normalizeString(value["auth-cookie"] ?? value.authCookie)
+        ? { authCookie: normalizeString(value["auth-cookie"] ?? value.authCookie)! }
+        : {}),
       ...((value["skip-anthropic-processing"] === true || value.skipAnthropicProcessing === true) &&
       kind === "claude"
         ? { skipAnthropicProcessing: true }

@@ -41,13 +41,15 @@ describe("provider import/export helpers", () => {
     });
   });
 
-  test("preserves OpenCode Go vision fallback model during import and export", () => {
+  test("preserves OpenCode Go dashboard usage fields during import and export", () => {
     const text = createProviderExportText("opencode-go", [
       {
         apiKey: " go-key ",
         name: "OpenCode Go",
         excludedModels: [" deepseek-v4-pro "],
         visionFallbackModel: " qwen3.5-plus ",
+        workspaceId: " wrk_123 ",
+        authCookie: " auth-token ",
       },
     ] satisfies ProviderSimpleConfig[]);
 
@@ -58,8 +60,10 @@ describe("provider import/export helpers", () => {
         {
           "api-key": "go-key",
           "excluded-models": ["deepseek-v4-pro"],
+          "auth-cookie": "auth-token",
           name: "OpenCode Go",
           "vision-fallback-model": "qwen3.5-plus",
+          "workspace-id": "wrk_123",
         },
       ],
     });
@@ -72,6 +76,8 @@ describe("provider import/export helpers", () => {
         name: "OpenCode Go",
         excludedModels: ["deepseek-v4-pro"],
         visionFallbackModel: "qwen3.5-plus",
+        workspaceId: "wrk_123",
+        authCookie: "auth-token",
       },
     ]);
   });

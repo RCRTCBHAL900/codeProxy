@@ -203,7 +203,21 @@ export interface ProviderSimpleConfig {
   models?: ProviderModel[];
   excludedModels?: string[];
   visionFallbackModel?: string;
+  workspaceId?: string;
+  authCookie?: string;
   skipAnthropicProcessing?: boolean;
+}
+
+export interface OpenCodeGoUsageItem {
+  type: "rolling" | "weekly" | "monthly" | string;
+  label: string;
+  percentage: number;
+  resets_in: string;
+}
+
+export interface OpenCodeGoUsageResponse {
+  workspace_id: string;
+  usage: OpenCodeGoUsageItem[];
 }
 
 export type BedrockAuthMode = "api-key" | "sigv4";
