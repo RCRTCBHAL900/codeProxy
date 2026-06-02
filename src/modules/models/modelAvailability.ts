@@ -614,6 +614,7 @@ let configuredAvailabilityInFlight:
 
 interface GroupAvailabilityCacheEntry {
   expiresAt: number;
+  cacheVersion: number;
   promise: Promise<ConfiguredModelAvailability>;
 }
 
@@ -632,8 +633,9 @@ export const loadConfiguredModelAvailability = async (
   if (validGroups.length > 0) {
     const cacheKey = validGroups.join(",");
     const now = Date.now();
+    const cacheVersion = getConfiguredAvailabilityCacheVersion();
     const cached = groupAvailabilityCache.get(cacheKey);
-    if (cached && now < cached.expiresAt) {
+    if (cached && cached.cacheVersion === cacheVersion && now < cached.expiresAt) {
       return cached.promise;
     }
     const promise = (async (): Promise<ConfiguredModelAvailability> => {
@@ -645,6 +647,7 @@ export const loadConfiguredModelAvailability = async (
         );
         groupAvailabilityCache.set(cacheKey, {
           expiresAt: now + GROUP_AVAILABILITY_TTL_MS,
+          cacheVersion,
           promise: Promise.resolve(result),
         });
         return result;
@@ -652,7 +655,7 @@ export const loadConfiguredModelAvailability = async (
         return loadConfiguredModelAvailabilityFallback();
       }
     })();
-    groupAvailabilityCache.set(cacheKey, { expiresAt: now + GROUP_AVAILABILITY_TTL_MS, promise });
+    groupAvailabilityCache.set(cacheKey, { expiresAt: now + GROUP_AVAILABILITY_TTL_MS, cacheVersion, promise });
     return promise;
   }
 

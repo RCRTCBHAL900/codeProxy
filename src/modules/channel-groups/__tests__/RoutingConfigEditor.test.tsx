@@ -177,11 +177,14 @@ describe("RoutingConfigEditor", () => {
     expect(await screen.findByLabelText("claude-sonnet-4-5")).toBeInTheDocument();
     expect(loadModelsForChannels).toHaveBeenCalledWith(["Team A Claude"]);
 
+    // All models display as checked (no explicit restriction = all allowed)
+    expect(screen.getByLabelText("claude-opus-4-5")).toBeChecked();
+    expect(screen.getByLabelText("claude-sonnet-4-5")).toBeChecked();
+
     await user.click(screen.getByRole("button", { name: "添加" }));
 
-    expect(screen.getByTestId("allowed-models")).toHaveTextContent(
-      "claude-opus-4-5,claude-sonnet-4-5",
-    );
+    // Empty allowed-models means "no restriction" - no explicit list saved
+    expect(screen.getByTestId("allowed-models")).not.toHaveTextContent(/claude/);
   });
 
   test("renders channel-scoped models as a checkbox table with descriptions and prices", async () => {

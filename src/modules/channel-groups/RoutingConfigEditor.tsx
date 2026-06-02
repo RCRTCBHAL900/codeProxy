@@ -499,10 +499,13 @@ export function RoutingConfigEditor({
     groupEditorId === SYSTEM_DEFAULT_GROUP_ID ||
     (groupEditorId !== null && groupDraft.name.trim().toLowerCase() === SYSTEM_DEFAULT_GROUP_NAME);
 
-  const selectedModelSet = useMemo(
-    () => new Set(groupDraft.allowedModels.map((model) => model.trim()).filter(Boolean)),
-    [groupDraft.allowedModels],
-  );
+  const selectedModelSet = useMemo(() => {
+    const effectiveSelectAll = !modelsSelectionTouched && groupDraft.allowedModels.length === 0;
+    if (effectiveSelectAll) {
+      return new Set(modelOptions.map((model) => model.id));
+    }
+    return new Set(groupDraft.allowedModels.map((model) => model.trim()).filter(Boolean));
+  }, [groupDraft.allowedModels, modelOptions, modelsSelectionTouched]);
 
   const modelOptionIds = useMemo(() => modelOptions.map((model) => model.id), [modelOptions]);
   const selectedVisibleModelCount = useMemo(
@@ -731,6 +734,13 @@ export function RoutingConfigEditor({
     setModelsSelectionTouched(true);
     setGroupDraft((current) => {
       const currentModels = current.allowedModels.map((model) => model.trim()).filter(Boolean);
+      // First interaction from "no restriction" empty state: initialize with full visible set
+      if (currentModels.length === 0 && modelOptionIds.length > 0) {
+        const initial = new Set(modelOptionIds);
+        if (checked) initial.add(normalized);
+        else initial.delete(normalized);
+        return { ...current, allowedModels: Array.from(initial) };
+      }
       if (checked) {
         return {
           ...current,
@@ -742,7 +752,7 @@ export function RoutingConfigEditor({
         allowedModels: currentModels.filter((model) => model !== normalized),
       };
     });
-  }, []);
+  }, [modelOptionIds]);
 
   const selectAllDraftModels = useCallback(() => {
     setModelsSelectionTouched(true);

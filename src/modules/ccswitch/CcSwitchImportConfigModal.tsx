@@ -128,23 +128,35 @@ function reconcileGenericMappings(
   models: readonly string[],
   fallbackModel: string,
 ): CcSwitchModelMapping[] {
+  const currentNonRole = currentMappings.filter((mapping) => !mapping.role);
   const currentByTarget = new Map(
-    currentMappings
-      .filter((mapping) => !mapping.role)
-      .map((mapping) => [mapping.targetModel.trim().toLowerCase(), mapping]),
+    currentNonRole.map((mapping) => [mapping.targetModel.trim().toLowerCase(), mapping]),
   );
-  const currentTargets = currentMappings
-    .filter((mapping) => !mapping.role)
-    .map((mapping) => mapping.targetModel);
-  const targets = dedupeModels(models.length > 0 ? [...currentTargets, ...models] : currentTargets);
-  const resolvedTargets = targets.length > 0 ? targets : dedupeModels([fallbackModel]);
+  const seen = new Set<string>();
+  const result: CcSwitchModelMapping[] = [];
 
-  return resolvedTargets.map((targetModel) => {
-    const existing = currentByTarget.get(targetModel.toLowerCase());
-    return {
-      requestModel: existing?.requestModel.trim() || targetModel,
-      targetModel,
-    };
+  for (const mapping of currentNonRole) {
+    const key = mapping.targetModel.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push(mapping);
+  }
+
+  const sortedNew = [...new Set(models.map((m) => m.trim()).filter(Boolean))]
+    .filter((m) => !seen.has(m.toLowerCase()))
+    .sort((a, b) => a.localeCompare(b));
+  for (const targetModel of sortedNew) {
+    const key = targetModel.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push({ requestModel: targetModel, targetModel });
+  }
+
+  const resolvedTargets =
+    result.length > 0 ? result : dedupeModels([fallbackModel]).map((targetModel) => ({ requestModel: targetModel, targetModel }));
+  return resolvedTargets.map((mapping) => {
+    const existing = currentByTarget.get(mapping.targetModel.trim().toLowerCase());
+    return existing ?? mapping;
   });
 }
 

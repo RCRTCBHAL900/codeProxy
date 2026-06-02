@@ -171,15 +171,13 @@ describe("CcSwitchImportSettingsPage", () => {
       new RegExp(`^${origin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/pro/cs_[a-z0-9]+/v1$`),
     );
 
-    expect(await within(dialog).findByText(/add a model mapping/i)).toBeInTheDocument();
+    expect(await within(dialog).findByDisplayValue("deepseek-v4-flash")).toBeInTheDocument();
+    expect(await within(dialog).findByDisplayValue("kimi-k2")).toBeInTheDocument();
     expect(listAvailableModels).not.toHaveBeenCalled();
-    await user.click(within(dialog).getByRole("button", { name: /add model mapping/i }));
-    await user.click(within(dialog).getByRole("combobox", { name: /actual channel model 1/i }));
-    await user.click(await screen.findByRole("option", { name: "deepseek-v4-flash" }));
-    expect(screen.queryByRole("option", { name: "gpt-4o-mini" })).not.toBeInTheDocument();
     const requestModelInput = within(dialog).getByLabelText(
       /cc switch request model for mapping 1/i,
     );
+    await user.clear(requestModelInput);
     await user.type(requestModelInput, "gpt-5.5");
 
     await user.type(within(dialog).getByLabelText(/provider name/i), "Relay Codex");
@@ -240,25 +238,24 @@ describe("CcSwitchImportSettingsPage", () => {
     await user.click(within(dialog).getByRole("combobox", { name: /select channel group/i }));
     await user.click(await screen.findByRole("option", { name: /pro.*\/pro/i }));
 
-    expect(await within(dialog).findByText(/add a model mapping/i)).toBeInTheDocument();
-    expect(
-      within(dialog).queryByLabelText(/cc switch request model for mapping 1/i),
-    ).not.toBeInTheDocument();
+    // Auto-populated: row 1 = deepseek-v4-flash, row 2 = kimi-k2
+    expect(await within(dialog).findByDisplayValue("deepseek-v4-flash")).toBeInTheDocument();
+    expect(await within(dialog).findByDisplayValue("kimi-k2")).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: /^save$/i })).toBeDisabled();
 
-    // Add mapping 1: targetModel=deepseek-v4-flash, requestModel=gpt-5.5
-    await user.click(within(dialog).getByRole("button", { name: /add model mapping/i }));
-    await user.click(within(dialog).getByRole("combobox", { name: /actual channel model 1/i }));
-    await user.click(await screen.findByRole("option", { name: "deepseek-v4-flash" }));
+    // Row 1: change request model to gpt-5.5
+    await user.clear(
+      within(dialog).getByLabelText(/cc switch request model for mapping 1/i),
+    );
     await user.type(
       within(dialog).getByLabelText(/cc switch request model for mapping 1/i),
       "gpt-5.5",
     );
 
-    // Add mapping 2: targetModel=kimi-k2, requestModel=gpt-5.5 (duplicate request model)
-    await user.click(within(dialog).getByRole("button", { name: /add model mapping/i }));
-    await user.click(within(dialog).getByRole("combobox", { name: /actual channel model 2/i }));
-    await user.click(await screen.findByRole("option", { name: "kimi-k2" }));
+    // Row 2: change request model to gpt-5.5 (duplicate request model)
+    await user.clear(
+      within(dialog).getByLabelText(/cc switch request model for mapping 2/i),
+    );
     await user.type(
       within(dialog).getByLabelText(/cc switch request model for mapping 2/i),
       "gpt-5.5",
@@ -337,10 +334,7 @@ describe("CcSwitchImportSettingsPage", () => {
     expect(groupSelect).toHaveTextContent("/openai/pro");
     expect(within(dialog).queryByText(/path address/i)).not.toBeInTheDocument();
 
-    expect(await within(dialog).findByText(/add a model mapping/i)).toBeInTheDocument();
-    await user.click(within(dialog).getByRole("button", { name: /add model mapping/i }));
-    await user.click(within(dialog).getByRole("combobox", { name: /actual channel model 1/i }));
-    expect(await screen.findByRole("option", { name: "gpt-5.5" })).toBeInTheDocument();
+    expect(await within(dialog).findByDisplayValue("gpt-5.5")).toBeInTheDocument();
     expect(
       screen.queryByRole("option", { name: "unexpected-extra-model" }),
     ).not.toBeInTheDocument();
@@ -406,13 +400,10 @@ describe("CcSwitchImportSettingsPage", () => {
     await user.click(within(dialog).getByRole("combobox", { name: /select channel group/i }));
     await user.click(await screen.findByRole("option", { name: /chatgpt-pro.*\/openai\/pro/i }));
 
-    expect(await within(dialog).findByText(/add a model mapping/i)).toBeInTheDocument();
-    await user.click(within(dialog).getByRole("button", { name: /add model mapping/i }));
-    await user.click(within(dialog).getByRole("combobox", { name: /actual channel model 1/i }));
-    expect(await screen.findByRole("option", { name: "gpt-5.5" })).toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: "gpt-5-codex" })).not.toBeInTheDocument();
+    expect(await within(dialog).findByDisplayValue("gpt-5.5")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("gpt-5-codex")).not.toBeInTheDocument();
     expect(listAvailableModels).toHaveBeenCalledWith({
-      allowedChannels: ["A_GptPro"],
+      allowedChannelGroups: ["chatgpt-pro"],
     });
     expect(loadConfiguredModelAvailability).toHaveBeenCalledTimes(1);
     expect(getModelConfigs).toHaveBeenCalledWith("active");
@@ -473,14 +464,11 @@ describe("CcSwitchImportSettingsPage", () => {
       await screen.findByRole("option", { name: /opencodego\+gpt.*\/codexdeepseek/i }),
     );
 
-    expect(await within(dialog).findByText(/add a model mapping/i)).toBeInTheDocument();
-    await user.click(within(dialog).getByRole("button", { name: /add model mapping/i }));
-    await user.click(within(dialog).getByRole("combobox", { name: /actual channel model 1/i }));
-    expect(await screen.findByRole("option", { name: "gpt-5.5" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "minimax-m2.7" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "kimi-k2.6" })).toBeInTheDocument();
+    expect(await within(dialog).findByDisplayValue("gpt-5.5")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("minimax-m2.7")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("kimi-k2.6")).toBeInTheDocument();
     expect(listAvailableModels).toHaveBeenCalledWith({
-      allowedChannels: ["A_GptPro", "opencode go"],
+      allowedChannelGroups: ["opencodego+gpt"],
     });
   });
 
@@ -538,7 +526,7 @@ describe("CcSwitchImportSettingsPage", () => {
     expect(await screen.findByRole("option", { name: "kimi-k2.6" })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "kimi-k2" })).not.toBeInTheDocument();
     expect(listAvailableModels).toHaveBeenCalledWith({
-      allowedChannels: ["kimi"],
+      allowedChannelGroups: ["kimicode"],
     });
     expect(getModelConfigs).toHaveBeenCalledWith("active");
   });
