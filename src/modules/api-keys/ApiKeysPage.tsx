@@ -42,7 +42,7 @@ import { ErrorDetailModal } from "@/modules/monitor/ErrorDetailModal";
 import type { ApiKeyFormValues } from "@/modules/api-keys/types";
 
 export function ApiKeysPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { notify } = useToast();
   const auth = useOptionalAuth();
 
@@ -443,9 +443,10 @@ export function ApiKeysPage() {
         configs: ccSwitchImportConfigs,
         providerName: ccSwitchImportEntry.name,
         usageBaseUrl: baseApiUrl,
+        usageLanguage: i18n.language,
       });
     },
-    [ccSwitchImportEntry, ccSwitchImportConfigs, channelGroupItems, auth],
+    [ccSwitchImportEntry, ccSwitchImportConfigs, channelGroupItems, auth, i18n.language],
   );
 
   const handleImportWithConfig = useCallback(

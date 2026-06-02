@@ -24,6 +24,8 @@ export interface CcSwitchClientConfig {
   fallbackLabel: string;
 }
 
+type CcSwitchUsageScriptLanguage = "zh-CN" | "en";
+
 export const CC_SWITCH_CLIENTS: CcSwitchClientConfig[] = [
   {
     type: "claude",
@@ -163,7 +165,30 @@ const getGenericRequestModel = (
   return (exactMatch ?? genericMappings[0])?.requestModel.trim() ?? "";
 };
 
-export function buildCcSwitchUsageScript(): string {
+const normalizeUsageScriptLanguage = (language: string | undefined): CcSwitchUsageScriptLanguage =>
+  String(language ?? "")
+    .trim()
+    .toLowerCase()
+    .startsWith("en")
+    ? "en"
+    : "zh-CN";
+
+export function buildCcSwitchUsageScript(language?: string): string {
+  const labels =
+    normalizeUsageScriptLanguage(language) === "en"
+      ? {
+          planName: "Today's usage",
+          invalidMessage: "API Key not found",
+          unit: "times",
+          costPrefix: "Today's cost: ",
+        }
+      : {
+          planName: "今日用量",
+          invalidMessage: "API Key 未找到",
+          unit: "次",
+          costPrefix: "今日消耗： ",
+        };
+
   return `({
   request: {
     url: "{{baseUrl}}/v0/management/public/usage/summary",
@@ -176,13 +201,13 @@ export function buildCcSwitchUsageScript(): string {
     var calls = Number(stats.total_calls || 0) || 0;
     var cost = Number(stats.quota_cost || 0) || 0;
     return {
-      planName: "今日用量",
+      planName: "${labels.planName}",
       isValid: response && response.found === false ? false : true,
-      invalidMessage: response && response.found === false ? "API Key 未找到" : null,
-      used: calls,
-      remaining: null,
-      unit: "次",
-      extra: "今日消耗 " + cost.toFixed(4) + " $"
+      invalidMessage: response && response.found === false ? "${labels.invalidMessage}" : null,
+      used: undefined,
+      remaining: calls,
+      unit: "${labels.unit}",
+      extra: "${labels.costPrefix}" + cost.toFixed(4) + "$"
     };
   }
 })`;
@@ -255,12 +280,14 @@ export function buildCcSwitchImportUrl(input: {
   baseUrl: string;
   clientType: CcSwitchClientType;
   enabled?: boolean;
+  note?: string;
   providerName: string;
   model?: string;
   modelMappings?: readonly CcSwitchModelMappingInput[];
   models?: readonly string[];
   settings?: CcSwitchImportSettingsInput;
   usageBaseUrl?: string;
+  usageLanguage?: string;
 }): string {
   const client = getCcSwitchClientConfig(input.clientType);
   const settings = normalizeCcSwitchImportSettings(
@@ -285,9 +312,13 @@ export function buildCcSwitchImportUrl(input: {
     enabled: String(input.enabled ?? true),
     usageEnabled: "true",
     usageBaseUrl: importConfig.usageBaseUrl,
-    usageScript: encodeBase64(buildCcSwitchUsageScript()),
+    usageScript: encodeBase64(buildCcSwitchUsageScript(input.usageLanguage)),
     usageAutoInterval: String(importConfig.usageAutoInterval),
   });
+  const note = String(input.note ?? "").trim();
+  if (note) {
+    params.set("notes", note);
+  }
 
   const modelMappings = normalizeModelMappings(input.modelMappings);
   const genericMappedModel =
