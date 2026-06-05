@@ -23,7 +23,7 @@ jobs:
           echo "VITE_APP_VERSION=${{ github.ref_name }}-${SHORT_SHA}" >> "$GITHUB_ENV"
 
       - name: Build production bundle
-        run: bunx vite build
+        run: bun run build
 
       - name: Write deployment version marker
         run: |
