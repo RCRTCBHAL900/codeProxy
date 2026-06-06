@@ -139,6 +139,47 @@ describe("SystemPage", () => {
     expect(mocks.check).toHaveBeenCalledTimes(1);
   });
 
+  test("does not wait in the update console when apply returns noop", async () => {
+    mocks.check.mockResolvedValueOnce({
+      enabled: true,
+      update_available: true,
+      current_version: "dev-1111111",
+      current_commit: "111111111111",
+      current_ui_version: "panel-dev-1111111",
+      current_ui_commit: "111111111111",
+      latest_version: "dev-abcdef1",
+      latest_commit: "abcdef123456",
+      latest_ui_version: "panel-dev-fedcba9",
+      latest_ui_commit: "fedcba987654",
+      target_channel: "dev",
+      docker_image: "ghcr.io/kittors/clirelay",
+      docker_tag: "dev",
+      release_notes: "Fixes and improvements",
+      updater_available: true,
+    });
+    mocks.apply.mockResolvedValueOnce({
+      status: "noop",
+      message:
+        "docker image for dev is not ready; latest successful publish is 1111111 but branch head is abcdef1",
+    });
+
+    renderPage();
+
+    await userEvent.click(await screen.findByRole("button", { name: /check docker update/i }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: /update now/i }));
+
+    await waitFor(() => {
+      expect(mocks.apply).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(within(dialog).queryByTestId("update-progress-console")).toBeNull();
+    });
+    expect(mocks.progress).not.toHaveBeenCalled();
+    expect(within(dialog).getByText(/docker image for dev is not ready/i)).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: /update now/i })).toBeDisabled();
+  });
+
   test("shows only default root v1 model discovery results", async () => {
     mocks.apiGet.mockImplementation((path: string) => {
       if (path === "/model-path-availability") {

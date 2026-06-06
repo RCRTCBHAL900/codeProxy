@@ -14,6 +14,8 @@ const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve
 const normalizedProgressStatus = (progress?: UpdateProgressResponse | null) =>
   progress?.status?.trim().toLowerCase() ?? "";
 
+const normalizedApplyStatus = (status?: string | null) => status?.trim().toLowerCase() ?? "";
+
 export const shortCommit = (commit?: string) => {
   const trimmed = commit?.trim() ?? "";
   return trimmed.length > 7 ? trimmed.slice(0, 7) : trimmed;
@@ -211,6 +213,19 @@ export const applyUpdateFlow = async ({
   t: TFunction;
 }) => {
   const response = await updateApi.apply();
+  if (normalizedApplyStatus(response.status) === "noop") {
+    const message = response.message?.trim() || t("auto_update.no_update");
+    const nextCandidate = candidate ? { ...candidate, message, update_available: false } : null;
+    if (nextCandidate) onCheck?.(nextCandidate);
+    onProgress?.({ status: "idle", stage: "idle", message, logs: [] });
+    notify({
+      type: isAlreadyUpToDateMessage(message) ? "success" : "warning",
+      message: isAlreadyUpToDateMessage(message)
+        ? t("auto_update.no_update")
+        : formatUpdateStatusMessage(message),
+    });
+    return false;
+  }
   const target = response.target ?? candidate;
   const result = await waitForAppliedTarget({
     target,
