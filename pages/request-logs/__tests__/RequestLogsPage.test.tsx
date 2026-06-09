@@ -203,7 +203,7 @@ describe("RequestLogsPage", () => {
     );
   });
 
-  test("only sends explicit request-log filter subsets, restores full selection, and resets filters", async () => {
+  test("only applies request-log multi-select changes after confirmation and restores full selection", async () => {
     await i18n.changeLanguage("en");
     const user = userEvent.setup();
 
@@ -234,6 +234,10 @@ describe("RequestLogsPage", () => {
     await user.click(keyFilter);
     await user.click(await screen.findByRole("option", { name: "Primary" }));
 
+    expect(mocks.getUsageLogs).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("button", { name: "Apply filters" }));
+
     await waitFor(() =>
       expect(mocks.getUsageLogs).toHaveBeenNthCalledWith(
         2,
@@ -243,7 +247,12 @@ describe("RequestLogsPage", () => {
       ),
     );
 
-    await user.click(screen.getByRole("option", { name: "Primary" }));
+    await user.click(keyFilter);
+    await user.click(screen.getByRole("button", { name: "Select all" }));
+
+    expect(mocks.getUsageLogs).toHaveBeenCalledTimes(2);
+
+    await user.click(screen.getByRole("button", { name: "Apply filters" }));
 
     await waitFor(() =>
       expect(mocks.getUsageLogs).toHaveBeenNthCalledWith(
@@ -254,7 +263,9 @@ describe("RequestLogsPage", () => {
       ),
     );
 
-    await user.click(await screen.findByRole("option", { name: "Primary" }));
+    await user.click(keyFilter);
+    await user.click(screen.getByRole("option", { name: "Primary" }));
+    await user.click(screen.getByRole("button", { name: "Apply filters" }));
 
     await waitFor(() =>
       expect(mocks.getUsageLogs).toHaveBeenNthCalledWith(
@@ -296,6 +307,7 @@ describe("RequestLogsPage", () => {
     await user.click(modelFilter);
     await user.click(await screen.findByRole("option", { name: "gpt-5.4" }));
 
+    expect(screen.getByRole("button", { name: /Select all/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Select shown/i })).not.toBeInTheDocument();
 
     await user.type(screen.getByRole("textbox"), "gpt");
