@@ -67,6 +67,10 @@ export function RequestLogsFilters({
             size="sm"
             emptyValueMeansAllSelected
             showFilteredToggleWithoutQuery={false}
+            applyMode="manual"
+            applyLabel={t("request_logs.apply_filters")}
+            cancelLabel={t("common.cancel")}
+            selectAllLabel={t("request_logs.select_all")}
           />
         </div>
         <div className="w-full min-[480px]:w-auto sm:w-[200px]">
@@ -86,6 +90,10 @@ export function RequestLogsFilters({
             size="sm"
             emptyValueMeansAllSelected
             showFilteredToggleWithoutQuery={false}
+            applyMode="manual"
+            applyLabel={t("request_logs.apply_filters")}
+            cancelLabel={t("common.cancel")}
+            selectAllLabel={t("request_logs.select_all")}
           />
         </div>
         <div className="w-full min-[480px]:w-auto sm:w-[180px]">
@@ -105,6 +113,10 @@ export function RequestLogsFilters({
             size="sm"
             emptyValueMeansAllSelected
             showFilteredToggleWithoutQuery={false}
+            applyMode="manual"
+            applyLabel={t("request_logs.apply_filters")}
+            cancelLabel={t("common.cancel")}
+            selectAllLabel={t("request_logs.select_all")}
           />
         </div>
         <div className="w-full min-[480px]:w-auto sm:w-[150px]">
@@ -124,6 +136,10 @@ export function RequestLogsFilters({
             size="sm"
             emptyValueMeansAllSelected
             showFilteredToggleWithoutQuery={false}
+            applyMode="manual"
+            applyLabel={t("request_logs.apply_filters")}
+            cancelLabel={t("common.cancel")}
+            selectAllLabel={t("request_logs.select_all")}
           />
         </div>
 
