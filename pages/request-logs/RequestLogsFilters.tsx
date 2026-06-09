@@ -66,6 +66,7 @@ export function RequestLogsFilters({
             showClearButton
             size="sm"
             emptyValueMeansAllSelected
+            showFilteredToggleWithoutQuery={false}
           />
         </div>
         <div className="w-full min-[480px]:w-auto sm:w-[200px]">
@@ -84,6 +85,7 @@ export function RequestLogsFilters({
             showClearButton
             size="sm"
             emptyValueMeansAllSelected
+            showFilteredToggleWithoutQuery={false}
           />
         </div>
         <div className="w-full min-[480px]:w-auto sm:w-[180px]">
@@ -102,6 +104,7 @@ export function RequestLogsFilters({
             showClearButton
             size="sm"
             emptyValueMeansAllSelected
+            showFilteredToggleWithoutQuery={false}
           />
         </div>
         <div className="w-full min-[480px]:w-auto sm:w-[150px]">
@@ -120,6 +123,7 @@ export function RequestLogsFilters({
             showClearButton
             size="sm"
             emptyValueMeansAllSelected
+            showFilteredToggleWithoutQuery={false}
           />
         </div>
 

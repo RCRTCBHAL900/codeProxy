@@ -54,6 +54,7 @@ export interface SearchableCheckboxMultiSelectProps {
   maxSummaryItems?: number;
   mobileBreakpoint?: number;
   emptyValueMeansAllSelected?: boolean;
+  showFilteredToggleWithoutQuery?: boolean;
 }
 
 function optionText(option: SearchableCheckboxMultiSelectOption): string {
@@ -81,6 +82,7 @@ export function SearchableCheckboxMultiSelect({
   maxSummaryItems = 2,
   mobileBreakpoint = 640,
   emptyValueMeansAllSelected = false,
+  showFilteredToggleWithoutQuery = true,
 }: SearchableCheckboxMultiSelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -130,7 +132,9 @@ export function SearchableCheckboxMultiSelect({
   const allVisibleSelected =
     visibleValues.length > 0 && visibleValues.every((optionValue) => selectedSet.has(optionValue));
 
-  const showFilteredToggle = !(showAllSelectionSummary && query.trim().length === 0);
+  const hasQuery = query.trim().length > 0;
+  const showFilteredToggle =
+    hasQuery || (showFilteredToggleWithoutQuery && !showAllSelectionSummary);
 
   const updatePosition = useCallback(() => {
     const trigger = triggerRef.current;

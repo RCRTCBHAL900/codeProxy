@@ -277,6 +277,32 @@ describe("RequestLogsPage", () => {
     );
   });
 
+  test("keeps the filtered-results bulk action hidden until the user actually searches", async () => {
+    await i18n.changeLanguage("en");
+    const user = userEvent.setup();
+
+    mocks.getUsageLogs.mockResolvedValue(responseWithFilterOptions);
+
+    render(
+      <ThemeProvider>
+        <ToastProvider>
+          <RequestLogsPage />
+        </ToastProvider>
+      </ThemeProvider>,
+    );
+
+    const [, modelFilter] = await screen.findAllByRole("combobox");
+
+    await user.click(modelFilter);
+    await user.click(await screen.findByRole("option", { name: "gpt-5.4" }));
+
+    expect(screen.queryByRole("button", { name: /Select shown/i })).not.toBeInTheDocument();
+
+    await user.type(screen.getByRole("textbox"), "gpt");
+
+    expect(screen.getByRole("button", { name: /Select shown/i })).toBeInTheDocument();
+  });
+
   test("renders request logs table through the shared DataTable wrapper", async () => {
     await i18n.changeLanguage("zh-CN");
 
