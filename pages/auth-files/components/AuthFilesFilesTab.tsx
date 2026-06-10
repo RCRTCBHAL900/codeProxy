@@ -484,7 +484,7 @@ interface AuthFilesFilesTabProps {
   modelOwnerGroupsLoading: boolean;
   modelOwnerGroups: AuthFileModelOwnerGroup[];
   selectedModelOwner: string;
-  setSelectedModelOwner: (value: string) => void;
+  setSelectedModelOwner: (value: string) => Promise<void> | void;
   search: string;
   setSearch: (value: string) => void;
   loading: boolean;
@@ -631,6 +631,7 @@ export function AuthFilesFilesTab({
   const [jsonImportError, setJsonImportError] = useState("");
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [uploadProgressDismissed, setUploadProgressDismissed] = useState(false);
+  const [modelOwnerDialogSaving, setModelOwnerDialogSaving] = useState(false);
   const normalizedFilter = normalizeProviderKey(filter);
   const canSetModelOwnerGroup = normalizedFilter !== "all";
   const activeFilterCount = [
@@ -878,12 +879,7 @@ export function AuthFilesFilesTab({
         <span className="min-w-0 truncate px-1 font-medium text-slate-600 dark:text-white/65">
           {t("auth_files.batch_selected", { count: selectedCount })}
         </span>
-        <Button
-          variant="ghost"
-          size="xs"
-          className="px-2"
-          onClick={() => setSelectedFileNames([])}
-        >
+        <Button variant="ghost" size="xs" className="px-2" onClick={() => setSelectedFileNames([])}>
           {t("auth_files.batch_clear")}
         </Button>
         <Button
@@ -1094,9 +1090,7 @@ export function AuthFilesFilesTab({
               <div className="flex min-h-9 flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
                   <div
-                    className={
-                      loading && filesLength === 0 ? "pointer-events-none opacity-60" : ""
-                    }
+                    className={loading && filesLength === 0 ? "pointer-events-none opacity-60" : ""}
                   >
                     {renderFilesViewModeTabs}
                   </div>
@@ -1192,7 +1186,6 @@ export function AuthFilesFilesTab({
                   {configActionsMenu}
                 </div>
               </div>
-
             </div>
           </div>
         </div>
@@ -1704,10 +1697,18 @@ export function AuthFilesFilesTab({
             </Button>
             <Button
               variant="primary"
-              onClick={() => {
-                setSelectedModelOwner(draftModelOwner);
-                setModelOwnerDialogOpen(false);
+              onClick={async () => {
+                setModelOwnerDialogSaving(true);
+                try {
+                  await setSelectedModelOwner(draftModelOwner);
+                  setModelOwnerDialogOpen(false);
+                } catch {
+                  // Save failures are surfaced via toast by the parent hook.
+                } finally {
+                  setModelOwnerDialogSaving(false);
+                }
               }}
+              disabled={modelOwnerDialogSaving}
             >
               {t("common.save")}
             </Button>

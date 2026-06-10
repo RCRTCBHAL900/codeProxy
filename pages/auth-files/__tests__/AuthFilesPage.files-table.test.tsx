@@ -58,12 +58,16 @@ const mocks = vi.hoisted(() => ({
     { value: "openai", label: "OpenAI", description: "OpenAI models", enabled: true },
     { value: "anthropic", label: "Anthropic", description: "Anthropic models", enabled: true },
   ]),
+  getAuthGroupModelOwnerMappingMap: vi.fn(async () => ({})),
+  saveAuthGroupModelOwnerMapping: vi.fn(async (_authGroup: string, _owner: string) => undefined),
   upload: vi.fn(async () => ({})),
   submitCallback: vi.fn(async () => ({})),
   getAuthStatus: vi.fn(async () => ({ status: "pending" })),
   startAuth: vi.fn(async () => ({ url: "https://example.test/oauth", state: "state-1" })),
   reconcile: vi.fn(async () => ({})),
 }));
+
+let authGroupOwnerMappingMap: Record<string, string> = {};
 
 vi.mock("@code-proxy/api-client", async (importOriginal) => {
   const mod = await importOriginal<typeof import("@code-proxy/api-client")>();
@@ -88,6 +92,8 @@ vi.mock("@code-proxy/api-client", async (importOriginal) => {
       ...mod.modelsApi,
       getModelConfigs: mocks.getModelConfigs,
       getModelOwnerPresets: mocks.getModelOwnerPresets,
+      getAuthGroupModelOwnerMappingMap: mocks.getAuthGroupModelOwnerMappingMap,
+      saveAuthGroupModelOwnerMapping: mocks.saveAuthGroupModelOwnerMapping,
     },
     quotaApi: { ...mod.quotaApi, reconcile: mocks.reconcile },
     usageApi: {
@@ -218,6 +224,18 @@ describe("AuthFilesPage files table", () => {
       { value: "openai", label: "OpenAI", description: "OpenAI models", enabled: true },
       { value: "anthropic", label: "Anthropic", description: "Anthropic models", enabled: true },
     ]);
+    authGroupOwnerMappingMap = {};
+    mocks.getAuthGroupModelOwnerMappingMap.mockReset();
+    mocks.getAuthGroupModelOwnerMappingMap.mockImplementation(async () => ({
+      ...authGroupOwnerMappingMap,
+    }));
+    mocks.saveAuthGroupModelOwnerMapping.mockReset();
+    mocks.saveAuthGroupModelOwnerMapping.mockImplementation(
+      async (authGroup: string, owner: string) => {
+        if (owner) authGroupOwnerMappingMap[authGroup] = owner;
+        else delete authGroupOwnerMappingMap[authGroup];
+      },
+    );
     mocks.upload.mockReset();
     mocks.upload.mockImplementation(async () => ({}));
     mocks.submitCallback.mockReset();
@@ -2603,12 +2621,13 @@ describe("AuthFilesPage files table", () => {
     expect(ownerSelect).toHaveTextContent("OpenAI");
     expect(await within(settingsDialog).findByText("gpt-4.1")).toBeInTheDocument();
     expect(within(settingsDialog).queryByText("claude-sonnet-4-5")).not.toBeInTheDocument();
-    expect(window.localStorage.getItem("authFilesPage.modelOwnerGroupMap.v1")).toBeNull();
+    expect(authGroupOwnerMappingMap).toEqual({});
 
     fireEvent.click(within(settingsDialog).getByRole("button", { name: "Save" }));
-    expect(window.localStorage.getItem("authFilesPage.modelOwnerGroupMap.v1")).toBe(
-      JSON.stringify({ codex: "openai" }),
-    );
+    await waitFor(() => {
+      expect(mocks.saveAuthGroupModelOwnerMapping).toHaveBeenCalledWith("codex", "openai");
+    });
+    expect(authGroupOwnerMappingMap).toEqual({ codex: "openai" });
 
     fireEvent.click(screen.getByRole("button", { name: "View" }));
     const dialog = await screen.findByRole("dialog", { name: "View: codex.json" });

@@ -6,12 +6,7 @@ import type {
   ProviderModel,
   ProviderSimpleConfig,
 } from "@code-proxy/api-client";
-import {
-  matchesModelPattern,
-  normalizeProviderKey,
-  readAuthFilesModelOwnerGroupMap,
-  resolveFileType,
-} from "@code-proxy/domain";
+import { matchesModelPattern, normalizeProviderKey, resolveFileType } from "@code-proxy/domain";
 import {
   getConfiguredAvailabilityCacheVersion,
   invalidateConfiguredModelAvailability,
@@ -104,6 +99,8 @@ type ModelDefinition = {
   owned_by?: string;
 };
 
+type AuthGroupOwnerMappingMap = Record<string, string>;
+
 const PROVIDER_CHANNELS = [
   { key: "gemini", load: () => providersApi.getGeminiKeys() },
   { key: "claude", load: () => providersApi.getClaudeConfigs() },
@@ -130,6 +127,35 @@ export const emptyModelPricing = (): ModelPricing => ({
 
 const normalizeOwnerValue = (value: string): string =>
   value.trim().replace(/\s+/g, "-").toLowerCase();
+
+const normalizeAuthGroupOwnerMappings = (payload: unknown): AuthGroupOwnerMappingMap => {
+  const record = isRecord(payload) ? payload : {};
+  const rawList = Array.isArray(record.items)
+    ? record.items
+    : Array.isArray(record.data)
+      ? record.data
+      : Array.isArray(payload)
+        ? payload
+        : [];
+
+  const output: AuthGroupOwnerMappingMap = {};
+  for (const item of rawList) {
+    if (!isRecord(item)) continue;
+    const authGroup = normalizeProviderKey(String(item.auth_group ?? item.authGroup ?? ""));
+    const owner = normalizeOwnerValue(String(item.owner ?? item.owner_value ?? ""));
+    if (!authGroup || authGroup === "all" || !owner) continue;
+    output[authGroup] = owner;
+  }
+  return output;
+};
+
+const loadAuthGroupOwnerMappingMap = async (): Promise<AuthGroupOwnerMappingMap> => {
+  try {
+    return normalizeAuthGroupOwnerMappings(await apiClient.get("/auth-group-model-owner-mappings"));
+  } catch {
+    return {};
+  }
+};
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
@@ -494,10 +520,10 @@ const authFileDisabled = (file: AuthFileItem): boolean => {
 const loadAuthFileModelItems = async (
   authFiles: AuthFileItem[],
   libraryModels: ModelAvailabilityItem[],
+  ownerByAuthGroup: AuthGroupOwnerMappingMap,
 ): Promise<{ items: ModelAvailabilityItem[]; scoped: boolean }> => {
   const map = new Map<string, ModelAvailabilityItem>();
   const libraryIndex = buildLibraryModelIndex(libraryModels);
-  const ownerByAuthGroup = readAuthFilesModelOwnerGroupMap();
   const modelsByOwner = new Map<string, ModelAvailabilityItem[]>();
   const activeAuthFiles = authFiles.filter((file) => !authFileDisabled(file));
   let scoped = authFiles.length > 0 && activeAuthFiles.length === 0;
@@ -546,6 +572,72 @@ const loadAuthFileModelItems = async (
   );
 
   return { items: Array.from(map.values()), scoped };
+};
+
+const rootModelPath: ModelPathItem = {
+  scope: "root",
+  label: "models",
+  method: "GET",
+  path: "/v1/models",
+  family: "openai-v1-models",
+};
+
+const augmentPathAvailabilityWithMappedOwners = async (
+  availability: ModelPathAvailability,
+): Promise<ModelPathAvailability> => {
+  const ownerByAuthGroup = await loadAuthGroupOwnerMappingMap();
+  if (Object.keys(ownerByAuthGroup).length === 0) return availability;
+
+  const [authFiles, libraryPayload] = await Promise.all([
+    loadAuthFiles(),
+    apiClient.get("/model-configs?scope=library").catch(() => null),
+  ]);
+  const libraryModels = normalizeModelConfigRows(libraryPayload);
+  const authFileAvailability = await loadAuthFileModelItems(
+    authFiles,
+    libraryModels,
+    ownerByAuthGroup,
+  );
+  if (authFileAvailability.items.length === 0) return availability;
+
+  const itemMap = new Map<string, ModelPathAvailabilityItem>(
+    availability.items.map((item): [string, ModelPathAvailabilityItem] => [
+      item.id.toLowerCase(),
+      { ...item, paths: [...item.paths] },
+    ]),
+  );
+
+  for (const model of authFileAvailability.items) {
+    const key = model.id.toLowerCase();
+    const existing = itemMap.get(key);
+    if (existing) {
+      if (
+        !existing.paths.some(
+          (path) => path.method === rootModelPath.method && path.path === rootModelPath.path,
+        )
+      ) {
+        existing.paths = [...existing.paths, rootModelPath];
+      }
+      if (!existing.owned_by && model.owned_by) {
+        existing.owned_by = model.owned_by;
+      }
+      continue;
+    }
+    itemMap.set(key, {
+      id: model.id,
+      owned_by: model.owned_by,
+      kind: "mapped-owner",
+      alias: false,
+      paths: [rootModelPath],
+    });
+  }
+
+  const items = Array.from(itemMap.values()).sort((a, b) => a.id.localeCompare(b.id));
+  return {
+    ...availability,
+    items,
+    idSet: new Set(items.map((item) => item.id.toLowerCase())),
+  };
 };
 
 /* ── New backend aggregation endpoint support ── */
@@ -660,9 +752,15 @@ export { invalidateConfiguredModelAvailability };
 export const loadConfiguredModelAvailability = async (options?: {
   allowedChannelGroups?: string[];
 }): Promise<ConfiguredModelAvailability> => {
+  const ownerByAuthGroup = await loadAuthGroupOwnerMappingMap();
+  const hasOwnerMappings = Object.keys(ownerByAuthGroup).length > 0;
   const validGroups = (options?.allowedChannelGroups ?? [])
     .map((g) => String(g ?? "").trim())
     .filter(Boolean);
+
+  if (hasOwnerMappings) {
+    return loadConfiguredModelAvailabilityFallback(ownerByAuthGroup);
+  }
 
   if (validGroups.length > 0) {
     const cacheKey = validGroups.join(",");
@@ -686,7 +784,7 @@ export const loadConfiguredModelAvailability = async (options?: {
         });
         return result;
       } catch {
-        return loadConfiguredModelAvailabilityFallback();
+        return loadConfiguredModelAvailabilityFallback(ownerByAuthGroup);
       }
     })();
     groupAvailabilityCache.set(cacheKey, {
@@ -723,7 +821,7 @@ export const loadConfiguredModelAvailability = async (options?: {
       return result;
     } catch {
       // Fallback to old multi-API aggregation for backward compatibility.
-      return loadConfiguredModelAvailabilityFallback();
+      return loadConfiguredModelAvailabilityFallback(ownerByAuthGroup);
     }
   })();
   configuredAvailabilityInFlight = { version: cacheVersion, promise };
@@ -737,14 +835,20 @@ export const loadConfiguredModelAvailability = async (options?: {
   }
 };
 
-const loadConfiguredModelAvailabilityFallback = async (): Promise<ConfiguredModelAvailability> => {
+const loadConfiguredModelAvailabilityFallback = async (
+  ownerByAuthGroup?: AuthGroupOwnerMappingMap,
+): Promise<ConfiguredModelAvailability> => {
   const [authFiles, libraryPayload, providerItems] = await Promise.all([
     loadAuthFiles(),
     apiClient.get("/model-configs?scope=library").catch(() => null),
     loadProviderModelItems(),
   ]);
   const libraryModels = normalizeModelConfigRows(libraryPayload);
-  const authFileAvailability = await loadAuthFileModelItems(authFiles, libraryModels);
+  const authFileAvailability = await loadAuthFileModelItems(
+    authFiles,
+    libraryModels,
+    ownerByAuthGroup ?? (await loadAuthGroupOwnerMappingMap()),
+  );
   const libraryIndex = buildLibraryModelIndex(libraryModels);
 
   const map = new Map<string, ModelAvailabilityItem>();
@@ -764,7 +868,9 @@ const loadConfiguredModelAvailabilityFallback = async (): Promise<ConfiguredMode
 };
 
 export const loadModelPathAvailability = async (): Promise<ModelPathAvailability> =>
-  normalizeModelPathAvailability(await apiClient.get("/model-path-availability"));
+  augmentPathAvailabilityWithMappedOwners(
+    normalizeModelPathAvailability(await apiClient.get("/model-path-availability")),
+  );
 
 export const filterByConfiguredModelAvailability = <T extends { id: string }>(
   models: T[],

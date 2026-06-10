@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   getOauthModelAlias: vi.fn(async () => ({})),
   getModelConfigs: vi.fn(async () => []),
   getModelOwnerPresets: vi.fn(async () => []),
+  getAuthGroupModelOwnerMappingMap: vi.fn(async () => ({})),
   getUsage: vi.fn(async () => ({ apis: {} })),
   getEntityStats: vi.fn(async () => ({ source: [], auth_index: [] })),
 }));
@@ -32,6 +33,7 @@ vi.mock("@code-proxy/api-client", async (importOriginal) => {
       ...mod.modelsApi,
       getModelConfigs: mocks.getModelConfigs,
       getModelOwnerPresets: mocks.getModelOwnerPresets,
+      getAuthGroupModelOwnerMappingMap: mocks.getAuthGroupModelOwnerMappingMap,
     },
     usageApi: { ...mod.usageApi, getUsage: mocks.getUsage, getEntityStats: mocks.getEntityStats },
     oauthApi: {
@@ -73,6 +75,8 @@ describe("AuthFilesPage OAuth excluded models", () => {
     mocks.getModelConfigs.mockResolvedValue([]);
     mocks.getModelOwnerPresets.mockReset();
     mocks.getModelOwnerPresets.mockResolvedValue([]);
+    mocks.getAuthGroupModelOwnerMappingMap.mockReset();
+    mocks.getAuthGroupModelOwnerMappingMap.mockResolvedValue({});
     mocks.getUsage.mockReset();
     mocks.getUsage.mockResolvedValue({ apis: {} });
     mocks.getEntityStats.mockReset();
@@ -188,7 +192,9 @@ describe("AuthFilesPage OAuth excluded models", () => {
 
     await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() => {
-      expect(screen.queryByRole("dialog", { name: "OAuth Excluded Models" })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("dialog", { name: "OAuth Excluded Models" }),
+      ).not.toBeInTheDocument();
     });
     expect(mocks.replaceOauthExcludedModels).not.toHaveBeenCalled();
 
