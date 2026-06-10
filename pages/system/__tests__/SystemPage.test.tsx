@@ -248,7 +248,18 @@ describe("SystemPage", () => {
         });
       }
       if (path === "/model-path-availability") {
-        return Promise.resolve({ data: [] });
+        return Promise.resolve({
+          data: [
+            {
+              id: "gpt-5.5",
+              paths: [{ scope: "root", method: "GET", path: "/v1/models" }],
+            },
+            {
+              id: "gpt-5-codex",
+              paths: [{ scope: "root", method: "GET", path: "/v1/models" }],
+            },
+          ],
+        });
       }
       if (path === "/model-configs?scope=library") {
         return Promise.resolve({
@@ -276,6 +287,7 @@ describe("SystemPage", () => {
     renderPage();
 
     expect(await screen.findByText("gpt-5.5")).toBeInTheDocument();
+    expect(screen.queryByText("gpt-5-codex")).not.toBeInTheDocument();
   });
 
   test("rechecks the target version before treating the update as successful", async () => {

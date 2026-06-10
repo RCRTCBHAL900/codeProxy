@@ -29,6 +29,7 @@ export type ConfiguredModelAvailability = {
   items: ModelAvailabilityItem[];
   idSet: Set<string>;
   metadataItems?: ModelAvailabilityItem[];
+  usesMappedOwners?: boolean;
 };
 
 export type ModelPricingMode = "token" | "call";
@@ -109,10 +110,11 @@ const PROVIDER_CHANNELS = [
   { key: "vertex", load: () => providersApi.getVertexConfigs() },
 ] as const;
 
-const emptyAvailability = (): ConfiguredModelAvailability => ({
+const emptyAvailability = (usesMappedOwners = false): ConfiguredModelAvailability => ({
   scoped: false,
   items: [],
   idSet: new Set(),
+  usesMappedOwners,
 });
 
 export const emptyModelPricing = (): ModelPricing => ({
@@ -722,6 +724,7 @@ export const normalizeConfiguredModelAvailability = (
     items,
     metadataItems,
     idSet: new Set(items.map((item) => item.id.toLowerCase())),
+    usesMappedOwners: false,
   };
 };
 
@@ -838,6 +841,7 @@ export const loadConfiguredModelAvailability = async (options?: {
 const loadConfiguredModelAvailabilityFallback = async (
   ownerByAuthGroup?: AuthGroupOwnerMappingMap,
 ): Promise<ConfiguredModelAvailability> => {
+  const usesMappedOwners = Object.keys(ownerByAuthGroup ?? {}).length > 0;
   const [authFiles, libraryPayload, providerItems] = await Promise.all([
     loadAuthFiles(),
     apiClient.get("/model-configs?scope=library").catch(() => null),
@@ -856,7 +860,7 @@ const loadConfiguredModelAvailabilityFallback = async (
   for (const item of providerItems) addModel(map, withLibraryModelMetadata(item, libraryIndex));
 
   if (!authFileAvailability.scoped && providerItems.length === 0) {
-    return emptyAvailability();
+    return emptyAvailability(usesMappedOwners);
   }
 
   const items = Array.from(map.values()).sort((a, b) => a.id.localeCompare(b.id));
@@ -864,6 +868,7 @@ const loadConfiguredModelAvailabilityFallback = async (
     scoped: true,
     items,
     idSet: new Set(items.map((item) => item.id.toLowerCase())),
+    usesMappedOwners,
   };
 };
 

@@ -21,7 +21,10 @@ import { Card } from "@code-proxy/ui";
 import { TextInput } from "@code-proxy/ui";
 import { useToast } from "@code-proxy/ui";
 import { UpdateDetailsCard } from "@app/update/UpdateDetailsCard";
-import { loadModelPathAvailability } from "@features/model-availability";
+import {
+  loadConfiguredModelAvailability,
+  loadModelPathAvailability,
+} from "@features/model-availability";
 import { HoverTooltip } from "@code-proxy/ui";
 
 // Vendor SVG icons
@@ -339,15 +342,27 @@ export function SystemPage({
     setModelsLoading(true);
     setModelsError(null);
     try {
-      const availability = await loadModelPathAvailability();
-      const rootV1ModelIds = availability.items
-        .filter((item) =>
-          item.paths.some(
-            (path) => path.scope === "root" && path.method === "GET" && path.path === "/v1/models",
-          ),
-        )
-        .map((item) => item.id);
-      setModels(Array.from(new Set(rootV1ModelIds)).sort((a, b) => a.localeCompare(b)));
+      const [configuredAvailability, pathAvailability] = await Promise.all([
+        loadConfiguredModelAvailability().catch(() => null),
+        loadModelPathAvailability().catch(() => null),
+      ]);
+
+      const useMappedOwnerModels = configuredAvailability?.usesMappedOwners === true;
+      const rootV1ModelIds =
+        pathAvailability?.items
+          .filter((item) =>
+            item.paths.some(
+              (path) => path.scope === "root" && path.method === "GET" && path.path === "/v1/models",
+            ),
+          )
+          .map((item) => item.id) ?? [];
+      const nextModelIds = useMappedOwnerModels
+        ? (configuredAvailability?.items ?? []).map((item) => item.id)
+        : rootV1ModelIds.length > 0
+          ? rootV1ModelIds
+          : (configuredAvailability?.items ?? []).map((item) => item.id);
+
+      setModels(Array.from(new Set(nextModelIds)).sort((a, b) => a.localeCompare(b)));
     } catch (err: unknown) {
       setModelsError(err instanceof Error ? err.message : t("system_page.load_failed"));
     } finally {

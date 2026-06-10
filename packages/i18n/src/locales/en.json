@@ -3513,7 +3513,7 @@
   "system_page": {
     "title": "System Info",
     "available_models": "Available Models",
-    "available_models_tooltip": "This only shows models returned by the default root GET /v1/models endpoint. Use Models to view custom paths, channel groups, aliases, and other protocol paths.",
+    "available_models_tooltip": "This shows the models currently usable on the default entry. When auth-group owner mappings are configured, the mapped configured model set takes precedence over raw static provider catalogs. Use Models to inspect custom paths, channel groups, aliases, and other protocol paths.",
     "subtitle": "Service, version & models",
     "api_base": "API Base",
     "api_key_lookup": "API Key Lookup",
