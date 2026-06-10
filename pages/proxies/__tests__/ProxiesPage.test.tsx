@@ -93,7 +93,7 @@ describe("ProxiesPage", () => {
     expect(screen.getByRole("columnheader", { name: /name/i })).toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: /proxy url/i })).not.toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: /protocol.*ip/i })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: /health check/i })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /server latency/i })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: /remark/i })).toBeInTheDocument();
 
     expect(await screen.findByText("HK Proxy")).toBeInTheDocument();
@@ -281,11 +281,18 @@ describe("ProxiesPage", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: /check hk proxy/i }));
 
-    expect(await screen.findByText(/health check · 31 ms/i)).toBeInTheDocument();
-    const latency = screen.getByText(/31 ms/i);
+    const latency = await screen.findByText(/^31 ms$/i);
     expect(latency).toBeInTheDocument();
     expect(latency.closest("[data-latency-tone]")).toHaveAttribute("data-latency-tone", "fast");
     expect(screen.queryByText(/204/)).not.toBeInTheDocument();
+    await userEvent.hover(latency);
+    const tooltip = (await screen.findAllByRole("tooltip")).find((node) =>
+      /http status:\s*204/i.test(node.textContent ?? ""),
+    );
+    expect(tooltip).toBeDefined();
+    expect(tooltip).toHaveTextContent(/reachable/i);
+    expect(tooltip).toHaveTextContent(/http status:\s*204/i);
+    expect(tooltip).toHaveTextContent(/current deployed server/i);
     expect(mocks.apiPost).toHaveBeenCalledWith(
       "/proxy-pool/check",
       { id: "hk" },
@@ -315,7 +322,15 @@ describe("ProxiesPage", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: /check hk proxy/i }));
 
-    expect(await screen.findByText(/health check failed/i)).toBeInTheDocument();
-    expect(screen.getByText(/proxy dial timeout/i)).toBeInTheDocument();
+    const failedBadge = await screen.findByText(/probe failed/i);
+    expect(failedBadge).toBeInTheDocument();
+    expect(screen.queryByText(/proxy dial timeout/i)).not.toBeInTheDocument();
+    await userEvent.hover(failedBadge);
+    const tooltip = (await screen.findAllByRole("tooltip")).find((node) =>
+      /proxy dial timeout/i.test(node.textContent ?? ""),
+    );
+    expect(tooltip).toBeDefined();
+    expect(tooltip).toHaveTextContent(/proxy dial timeout/i);
+    expect(tooltip).toHaveTextContent(/latency:\s*12001 ms/i);
   });
 });
