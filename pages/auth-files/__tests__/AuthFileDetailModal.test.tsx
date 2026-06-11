@@ -187,7 +187,8 @@ describe("AuthFileDetailModal", () => {
   test("keeps first trend loading quiet before the first payload arrives", () => {
     renderDetailModal({ detailTrend: null, detailTrendLoading: true });
 
-    expect(screen.getByTestId("auth-file-trend-loading")).toBeEmptyDOMElement();
+    const loading = screen.getByTestId("auth-file-trend-loading");
+    expect(loading.querySelectorAll(".animate-pulse")).toHaveLength(8);
     expect(screen.queryByText("Loading...")).not.toBeInTheDocument();
     expect(screen.queryByTestId("auth-file-trend-chart")).not.toBeInTheDocument();
     expect(chartOptions).toHaveLength(0);

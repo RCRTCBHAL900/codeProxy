@@ -356,7 +356,23 @@ export function AuthFileDetailModal({
 
   const renderUsageTrend = () => {
     if (detailTrendLoading && !detailTrend) {
-      return <div className="min-h-80" data-testid="auth-file-trend-loading" aria-hidden="true" />;
+      const skeletonClass =
+        "animate-pulse rounded-lg bg-slate-100/80 dark:bg-white/[0.06]";
+
+      return (
+        <div className="space-y-4" data-testid="auth-file-trend-loading" aria-hidden="true">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <div key={index} className={`${skeletonClass} h-20`} />
+            ))}
+          </div>
+          <div className="space-y-2">
+            <div className={`${skeletonClass} h-4 w-32`} />
+            <div className={`${skeletonClass} h-3 w-56 max-w-full`} />
+          </div>
+          <div className={`${skeletonClass} h-80 min-w-0`} />
+        </div>
+      );
     }
 
     if (detailTrendError) {
