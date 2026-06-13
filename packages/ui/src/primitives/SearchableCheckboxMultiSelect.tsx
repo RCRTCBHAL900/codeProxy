@@ -390,11 +390,19 @@ export function SearchableCheckboxMultiSelect({
     (event: React.MouseEvent) => {
       event.preventDefault();
       event.stopPropagation();
-      onClear?.();
+      if (onClear) {
+        if (manualApply) {
+          setDraftExplicitValue([]);
+          setDraftEmptyMeansAllSelected(emptyValueMeansAllSelected);
+        }
+        onClear();
+        closeDropdown(false);
+        return;
+      }
       updateSelection([]);
       setQuery("");
     },
-    [onClear, updateSelection],
+    [closeDropdown, emptyValueMeansAllSelected, manualApply, onClear, updateSelection],
   );
 
   return (
