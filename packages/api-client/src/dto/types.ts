@@ -89,6 +89,18 @@ export interface AuthFileItem extends TagDisplayFields {
 export interface AuthFilesResponse {
   files: AuthFileItem[];
   total?: number;
+  offset?: number;
+  limit?: number;
+  returned?: number;
+  has_more?: boolean;
+  page?: number;
+  total_pages?: number;
+  filter_counts?: {
+    total: number;
+    counts: Record<string, number>;
+  };
+  provider_options?: string[];
+  selectable_names?: string[];
 }
 
 export interface UsageDetail {

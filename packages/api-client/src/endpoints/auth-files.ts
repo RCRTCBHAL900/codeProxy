@@ -2,8 +2,18 @@ import { apiClient } from "../client/client";
 import type { AuthFilesResponse, OAuthModelAliasEntry } from "../dto/types";
 import { normalizeOauthExcludedModels, normalizeOauthModelAlias } from "./helpers";
 
+export interface AuthFilesListParams extends Record<string, string | number | boolean | null | undefined> {
+  provider?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+  include_counts?: 0 | 1;
+  include_names?: 0 | 1;
+}
+
 export const authFilesApi = {
-  list: (): Promise<AuthFilesResponse> => apiClient.get<AuthFilesResponse>("/auth-files"),
+  list: (params: AuthFilesListParams = {}): Promise<AuthFilesResponse> =>
+    apiClient.get<AuthFilesResponse>("/auth-files", { params }),
   setStatus: (name: string, disabled: boolean) =>
     apiClient.patch<{ status: string; disabled: boolean }>("/auth-files/status", {
       name,

@@ -120,19 +120,6 @@ export function AuthFilesPage() {
     applyImport,
   } = useAuthFilesOAuthConfig(configModalTab ?? "files");
 
-  const {
-    files,
-    setFiles,
-    loading,
-    refreshingAll,
-    usageLoading,
-    usageData,
-    usageIndex,
-    loadAll,
-    refreshFilesForItems,
-    refreshUsageDataForFiles,
-  } = useAuthFilesDataState();
-
   const [confirm, setConfirm] = useState<null | { type: "deleteSelection"; names: string[] }>(null);
 
   const [oauthDialogOpen, setOauthDialogOpen] = useState(false);
@@ -144,6 +131,20 @@ export function AuthFilesPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [selectedFileNames, setSelectedFileNames] = useState<string[]>([]);
+
+  const {
+    files,
+    setFiles,
+    loading,
+    refreshingAll,
+    usageLoading,
+    usageData,
+    usageIndex,
+    serverPageInfo,
+    loadAll,
+    refreshFilesForItems,
+    refreshUsageDataForFiles,
+  } = useAuthFilesDataState({ filter, search, page });
   const [proxyPoolEntries, setProxyPoolEntries] = useState<ProxyPoolEntry[]>([]);
   const [tagsEditorFileName, setTagsEditorFileName] = useState<string | null>(null);
   const [refreshingCurrentPage, setRefreshingCurrentPage] = useState(false);
@@ -345,6 +346,7 @@ export function AuthFilesPage() {
     setPage,
     selectedFileNames,
     setSelectedFileNames,
+    serverPageInfo,
   });
 
   const {
@@ -583,6 +585,7 @@ export function AuthFilesPage() {
         openGroupOverview={openGroupOverview}
         groupOverviewLoading={groupOverviewLoading}
         filteredFiles={filteredFiles}
+        totalCount={serverPageInfo?.total ?? filteredFiles.length}
         refreshFilesAndQuota={refreshFilesAndQuota}
         usageLoading={usageLoading}
         refreshingAll={refreshingAll || refreshingCurrentPage}

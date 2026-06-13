@@ -24,6 +24,15 @@ interface UseAuthFilesListStateOptions {
   setPage: Dispatch<SetStateAction<number>>;
   selectedFileNames: string[];
   setSelectedFileNames: Dispatch<SetStateAction<string[]>>;
+  serverPageInfo?: {
+    total: number;
+    page: number;
+    totalPages: number;
+    filterCounts: { total: number; counts: Record<string, number> };
+    providerOptions: string[];
+    selectableNames: string[];
+    serverPaged: true;
+  } | null;
 }
 
 export function useAuthFilesListState({
@@ -36,12 +45,16 @@ export function useAuthFilesListState({
   setPage,
   selectedFileNames,
   setSelectedFileNames,
+  serverPageInfo,
 }: UseAuthFilesListStateOptions) {
   const providerOptions = useMemo(() => {
+    if (serverPageInfo?.serverPaged) {
+      return serverPageInfo.providerOptions;
+    }
     const set = new Set<string>();
     files.forEach((file) => set.add(resolveFileType(file)));
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [files]);
+  }, [files, serverPageInfo]);
 
   const searchFilteredFiles = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -63,13 +76,16 @@ export function useAuthFilesListState({
   }, [files, filter]);
 
   const filterCounts = useMemo(() => {
+    if (serverPageInfo?.serverPaged) {
+      return serverPageInfo.filterCounts;
+    }
     const counts: Record<string, number> = {};
     files.forEach((file) => {
       const typeKey = normalizeProviderKey(resolveFileType(file));
       counts[typeKey] = (counts[typeKey] ?? 0) + 1;
     });
     return { total: files.length, counts };
-  }, [files]);
+  }, [files, serverPageInfo]);
 
   const customTagOptions = useMemo(() => {
     const set = new Set<string>();
@@ -102,6 +118,13 @@ export function useAuthFilesListState({
   }, [tagScopedFiles]);
 
   const filteredFiles = useMemo(() => {
+    if (serverPageInfo?.serverPaged) {
+      return files
+        .filter((file) => authFileMatchesStatusFilter(file, statusFilter))
+        .sort((a, b) =>
+          authFilesSortCollator.compare(resolveAuthFileSortKey(a), resolveAuthFileSortKey(b)),
+        );
+    }
     const statusScoped = tagScopedFiles.filter((file) =>
       authFileMatchesStatusFilter(file, statusFilter),
     );
@@ -111,27 +134,42 @@ export function useAuthFilesListState({
       .sort((a, b) =>
         authFilesSortCollator.compare(resolveAuthFileSortKey(a), resolveAuthFileSortKey(b)),
       );
-  }, [searchFilteredFiles, statusFilter, tagScopedFiles]);
+  }, [files, searchFilteredFiles, serverPageInfo, statusFilter, tagScopedFiles]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredFiles.length / AUTH_FILES_PAGE_SIZE));
-  const safePage = Math.min(totalPages, Math.max(1, page));
+  const totalPages = serverPageInfo?.serverPaged
+    ? Math.max(1, serverPageInfo.totalPages)
+    : Math.max(1, Math.ceil(filteredFiles.length / AUTH_FILES_PAGE_SIZE));
+  const safePage = serverPageInfo?.serverPaged
+    ? Math.min(totalPages, Math.max(1, serverPageInfo.page))
+    : Math.min(totalPages, Math.max(1, page));
 
   const pageItems = useMemo(() => {
+    if (serverPageInfo?.serverPaged) {
+      return filteredFiles;
+    }
     const start = (safePage - 1) * AUTH_FILES_PAGE_SIZE;
     return filteredFiles.slice(start, start + AUTH_FILES_PAGE_SIZE);
-  }, [filteredFiles, safePage]);
+  }, [filteredFiles, safePage, serverPageInfo]);
 
   const selectableFilteredFiles = useMemo(
-    () => filteredFiles.filter((file) => !isRuntimeOnlyAuthFile(file)),
-    [filteredFiles],
+    () =>
+      serverPageInfo?.serverPaged
+        ? []
+        : filteredFiles.filter((file) => !isRuntimeOnlyAuthFile(file)),
+    [filteredFiles, serverPageInfo],
   );
   const selectablePageFiles = useMemo(
     () => pageItems.filter((file) => !isRuntimeOnlyAuthFile(file)),
     [pageItems],
   );
   const selectableFilteredNameSet = useMemo(
-    () => new Set(selectableFilteredFiles.map((file) => file.name)),
-    [selectableFilteredFiles],
+    () =>
+      new Set(
+        serverPageInfo?.serverPaged
+          ? serverPageInfo.selectableNames
+          : selectableFilteredFiles.map((file) => file.name),
+      ),
+    [selectableFilteredFiles, serverPageInfo],
   );
   const selectablePageNames = useMemo(
     () => selectablePageFiles.map((file) => file.name),
@@ -146,8 +184,8 @@ export function useAuthFilesListState({
   const somePageSelected =
     !allPageSelected && selectablePageNames.some((name) => selectedFileNameSet.has(name));
   const allFilteredSelected =
-    selectableFilteredFiles.length > 0 &&
-    selectableFilteredFiles.every((file) => selectedFileNameSet.has(file.name));
+    selectableFilteredNameSet.size > 0 &&
+    Array.from(selectableFilteredNameSet).every((name) => selectedFileNameSet.has(name));
 
   useEffect(() => {
     if (safePage !== page) setPage(safePage);
@@ -187,14 +225,14 @@ export function useAuthFilesListState({
     (checked: boolean) => {
       setSelectedFileNames((prev) => {
         const next = new Set(prev);
-        selectableFilteredFiles.forEach((file) => {
-          if (checked) next.add(file.name);
-          else next.delete(file.name);
+        selectableFilteredNameSet.forEach((name) => {
+          if (checked) next.add(name);
+          else next.delete(name);
         });
         return Array.from(next);
       });
     },
-    [selectableFilteredFiles, setSelectedFileNames],
+    [selectableFilteredNameSet, setSelectedFileNames],
   );
 
   return {

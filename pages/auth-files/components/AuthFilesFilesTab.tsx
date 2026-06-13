@@ -497,6 +497,7 @@ interface AuthFilesFilesTabProps {
   openGroupOverview: () => void;
   groupOverviewLoading: boolean;
   filteredFiles: AuthFileItem[];
+  totalCount: number;
   refreshFilesAndQuota: () => Promise<void>;
   usageLoading: boolean;
   refreshingAll: boolean;
@@ -578,6 +579,7 @@ export function AuthFilesFilesTab({
   openGroupOverview,
   groupOverviewLoading,
   filteredFiles,
+  totalCount,
   refreshFilesAndQuota,
   usageLoading,
   refreshingAll,
@@ -929,7 +931,7 @@ export function AuthFilesFilesTab({
     <PaginationBar
       currentPage={safePage}
       totalPages={totalPages}
-      totalCount={filteredFiles.length}
+      totalCount={totalCount}
       pageSize={AUTH_FILES_PAGE_SIZE}
       onPageChange={setPage}
       showPageSize={false}

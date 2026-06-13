@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { authFilesApi, usageApi } from "@code-proxy/api-client";
 import type { EntityStatsScope } from "@code-proxy/api-client/endpoints/usage";
-import type { AuthFileItem, EntityStatsResponse } from "@code-proxy/api-client";
+import type { AuthFileItem, AuthFilesResponse, EntityStatsResponse } from "@code-proxy/api-client";
 import { useToast } from "@code-proxy/ui";
 import {
+  AUTH_FILES_PAGE_SIZE,
   buildAuthFileSourceCandidates,
   buildUsageIndex,
   normalizeAuthIndexValue,
@@ -65,7 +66,60 @@ const buildEntityStatsScopeForFiles = (targetFiles: AuthFileItem[]): EntityStats
   return { authIndexes, sources };
 };
 
-export function useAuthFilesDataState() {
+interface UseAuthFilesDataStateOptions {
+  filter: string;
+  search: string;
+  page: number;
+}
+
+interface AuthFilesServerPageInfo {
+  total: number;
+  page: number;
+  totalPages: number;
+  filterCounts: { total: number; counts: Record<string, number> };
+  providerOptions: string[];
+  selectableNames: string[];
+  serverPaged: true;
+}
+
+const hasServerPagingMetadata = (response: AuthFilesResponse | null | undefined) =>
+  Boolean(
+    response &&
+      (typeof response.page === "number" ||
+        typeof response.total_pages === "number" ||
+        response.filter_counts ||
+        response.provider_options ||
+        response.selectable_names),
+  );
+
+const normalizeServerPageInfo = (
+  response: AuthFilesResponse | null | undefined,
+  files: AuthFileItem[],
+) : AuthFilesServerPageInfo | null => {
+  if (!hasServerPagingMetadata(response)) {
+    return null;
+  }
+  const total = Math.max(0, Number(response?.total ?? files.length) || 0);
+  const totalPages = Math.max(
+    1,
+    Number(response?.total_pages ?? Math.ceil(total / AUTH_FILES_PAGE_SIZE)) || 1,
+  );
+  const page = Math.min(totalPages, Math.max(1, Number(response?.page ?? 1) || 1));
+  return {
+    total,
+    page,
+    totalPages,
+    filterCounts:
+      response?.filter_counts && typeof response.filter_counts === "object"
+        ? response.filter_counts
+        : { total, counts: {} },
+    providerOptions: Array.isArray(response?.provider_options) ? response.provider_options : [],
+    selectableNames: Array.isArray(response?.selectable_names) ? response.selectable_names : [],
+    serverPaged: true,
+  };
+};
+
+export function useAuthFilesDataState({ filter, search, page }: UseAuthFilesDataStateOptions) {
   const { t } = useTranslation();
   const { notify } = useToast();
   const initialDataCache = useMemo(() => readAuthFilesDataCache(), []);
@@ -77,6 +131,7 @@ export function useAuthFilesDataState() {
   const [usageData, setUsageData] = useState<EntityStatsResponse | null>(
     () => initialDataCache?.usageData ?? null,
   );
+  const [serverPageInfo, setServerPageInfo] = useState<AuthFilesServerPageInfo | null>(null);
 
   const filesRef = useRef<AuthFileItem[]>(files);
   const usageDataRef = useRef<EntityStatsResponse | null>(usageData);
@@ -88,10 +143,18 @@ export function useAuthFilesDataState() {
     else setLoading(true);
     if (!hasExisting) setUsageLoading(true);
     try {
-      const filesRes = await authFilesApi.list();
+      const filesRes = await authFilesApi.list({
+        provider: filter,
+        search,
+        page,
+        limit: AUTH_FILES_PAGE_SIZE,
+        include_counts: 1,
+        include_names: 1,
+      });
       const list = Array.isArray(filesRes?.files) ? filesRes.files : [];
       filesRef.current = list;
       setFiles(list);
+      setServerPageInfo(normalizeServerPageInfo(filesRes, list));
 
       const scope = buildEntityStatsScopeForFiles(list);
       const hasUsageScope =
@@ -113,41 +176,13 @@ export function useAuthFilesDataState() {
       else setLoading(false);
       if (!hasExisting) setUsageLoading(false);
     }
-  }, [notify, t]);
+  }, [filter, notify, page, search, t]);
 
   const refreshFilesForItems = useCallback(
-    async (targetFiles: AuthFileItem[]): Promise<AuthFileItem[]> => {
-      if (targetFiles.length === 0) return filesRef.current;
-
-      const targetNames = new Set(targetFiles.map((file) => file.name).filter(Boolean));
-      if (targetNames.size === 0) return filesRef.current;
-
-      try {
-        const filesRes = await authFilesApi.list();
-        const list = Array.isArray(filesRes?.files) ? filesRes.files : [];
-        const filesByName = new Map(list.map((file) => [file.name, file]));
-        let updatedFiles = filesRef.current;
-
-        setFiles((prev) => {
-          const next = prev.map((item) => {
-            if (!targetNames.has(item.name)) return item;
-            return filesByName.get(item.name) ?? item;
-          });
-          updatedFiles = next;
-          filesRef.current = next;
-          return next;
-        });
-
-        return updatedFiles;
-      } catch (err: unknown) {
-        notify({
-          type: "error",
-          message: err instanceof Error ? err.message : t("auth_files.load_failed"),
-        });
-        return filesRef.current;
-      }
+    async (_targetFiles: AuthFileItem[]): Promise<AuthFileItem[]> => {
+      return loadAll();
     },
-    [notify, t],
+    [loadAll],
   );
 
   const refreshUsageDataForFiles = useCallback(
@@ -217,6 +252,7 @@ export function useAuthFilesDataState() {
     usageLoading,
     usageData,
     usageIndex,
+    serverPageInfo,
     loadAll,
     refreshFilesForItems,
     refreshUsageDataForFiles,
