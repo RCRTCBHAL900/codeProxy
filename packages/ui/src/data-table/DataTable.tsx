@@ -119,11 +119,12 @@ const NON_RESIZABLE_COLUMN_KEYS = new Set(["select", "action", "actions"]);
 // Column Reorder
 // ---------------------------------------------------------------------------
 const COLUMN_ORDER_STORAGE_PREFIX = "codeProxy.dataTable.columnOrder.v1";
-const COLUMN_REORDER_ACTIVATION_DELAY_MS = 180;
+const COLUMN_REORDER_ACTIVATION_DELAY_MS = 90;
 const COLUMN_REORDER_MIN_DRAG_DISTANCE_PX = 4;
 const COLUMN_REORDER_AUTOSCROLL_EDGE_PX = 72;
 const COLUMN_REORDER_AUTOSCROLL_MAX_PX_PER_FRAME = 22;
-const COLUMN_REORDER_SHIFT_TRANSITION = "transform 150ms cubic-bezier(0.22, 1, 0.36, 1)";
+const COLUMN_REORDER_SHIFT_TRANSITION = "transform 72ms cubic-bezier(0.2, 0, 0, 1)";
+const COLUMN_REORDER_SETTLE_CLEANUP_MS = 110;
 const NON_REORDERABLE_COLUMN_KEYS = new Set(["select", "action", "actions"]);
 
 type ColumnOrder = string[];
@@ -477,6 +478,51 @@ function formatColumnReorderTransform(offsetX: number) {
   if (Math.abs(offsetX) < 0.1) return "";
   const rounded = Math.round(offsetX * 100) / 100;
   return `translate3d(${rounded}px, 0, 0)`;
+}
+
+function getColumnReorderCellBackground(element: HTMLElement, isDragged: boolean) {
+  const isHeader = element.tagName === "TH";
+  const isDark = document.documentElement.classList.contains("dark");
+  const base = isHeader
+    ? isDark
+      ? "rgb(38 38 38)"
+      : "rgb(241 245 249)"
+    : isDark
+      ? "rgb(10 10 10)"
+      : "rgb(255 255 255)";
+
+  if (!isDragged) return base;
+
+  const accent = isDark
+    ? isHeader
+      ? "linear-gradient(90deg, rgba(59, 130, 246, 0.24), rgba(34, 211, 238, 0.12))"
+      : "linear-gradient(90deg, rgba(59, 130, 246, 0.16), rgba(34, 211, 238, 0.08))"
+    : isHeader
+      ? "linear-gradient(90deg, rgba(37, 99, 235, 0.2), rgba(14, 165, 233, 0.1))"
+      : "linear-gradient(90deg, rgba(37, 99, 235, 0.1), rgba(14, 165, 233, 0.05))";
+
+  return `${accent}, ${base}`;
+}
+
+function scheduleColumnReorderSettleCleanup(element: HTMLElement) {
+  window.setTimeout(() => {
+    if (
+      element.hasAttribute("data-vt-column-dragging-cell") ||
+      element.hasAttribute("data-vt-column-shifted-cell") ||
+      element.style.transform
+    ) {
+      return;
+    }
+
+    element.style.transition = "";
+    element.style.willChange = "";
+    element.style.position = "";
+    element.style.zIndex = "";
+    element.style.background = "";
+    element.style.overflow = "";
+    element.style.contain = "";
+    element.style.isolation = "";
+  }, COLUMN_REORDER_SETTLE_CLEANUP_MS);
 }
 
 // ---------------------------------------------------------------------------
@@ -1247,7 +1293,11 @@ export function DataTable<T>({
         element.style.pointerEvents = "";
         element.style.opacity = "";
         element.style.filter = "";
+        element.style.background = "";
         element.style.boxShadow = "";
+        element.style.overflow = "";
+        element.style.contain = "";
+        element.style.isolation = "";
         element.removeAttribute("data-vt-column-dragging-cell");
         element.removeAttribute("data-vt-column-shifted-cell");
       });
@@ -1261,6 +1311,7 @@ export function DataTable<T>({
         const shift = isDragged ? dragOffsetX : (getColumnReorderShift(active, geometry) ?? 0);
         const transform = formatColumnReorderTransform(shift);
         const stableShift = isDragged ? null : shift;
+        const wasShifted = !geometry.appliedDragging && (geometry.appliedShift ?? 0) !== 0;
         if (
           geometry.appliedDragging === isDragged &&
           geometry.appliedShift === stableShift &&
@@ -1273,15 +1324,29 @@ export function DataTable<T>({
         geometry.appliedTransform = transform;
 
         geometry.elements.forEach((element) => {
+          const isSettling = !isDragged && shift === 0 && wasShifted;
+          const isMoved = isDragged || shift !== 0 || isSettling;
           element.style.transform = transform;
-          element.style.transition = isDragged ? "none" : COLUMN_REORDER_SHIFT_TRANSITION;
-          element.style.willChange = "transform";
-          element.style.position = "relative";
-          element.style.zIndex = isDragged ? "80" : shift ? "40" : "";
+          element.style.transition = isDragged
+            ? "none"
+            : shift !== 0 || isSettling
+              ? COLUMN_REORDER_SHIFT_TRANSITION
+              : "";
+          element.style.willChange = isMoved ? "transform" : "";
+          element.style.position = isMoved ? "relative" : "";
+          element.style.zIndex = isDragged ? "90" : shift || isSettling ? "45" : "";
           element.style.pointerEvents = isDragged ? "none" : "";
-          element.style.opacity = isDragged ? "0.96" : "";
-          element.style.filter = isDragged ? "brightness(1.02)" : "";
-          element.style.boxShadow = isDragged ? "0 14px 32px -24px rgba(15, 23, 42, 0.7)" : "";
+          element.style.opacity = "";
+          element.style.filter = "";
+          element.style.background = isMoved
+            ? getColumnReorderCellBackground(element, isDragged)
+            : "";
+          element.style.overflow = isMoved ? "hidden" : "";
+          element.style.contain = isMoved ? "paint" : "";
+          element.style.isolation = isMoved ? "isolate" : "";
+          element.style.boxShadow = isDragged
+            ? "inset 2px 0 0 rgba(37, 99, 235, 0.42), inset -2px 0 0 rgba(14, 165, 233, 0.28), 0 10px 26px -22px rgba(15, 23, 42, 0.65)"
+            : "";
 
           if (isDragged) {
             element.setAttribute("data-vt-column-dragging-cell", "true");
@@ -1292,6 +1357,10 @@ export function DataTable<T>({
           } else {
             element.removeAttribute("data-vt-column-dragging-cell");
             element.removeAttribute("data-vt-column-shifted-cell");
+          }
+
+          if (isSettling) {
+            scheduleColumnReorderSettleCleanup(element);
           }
         });
       });
@@ -1887,9 +1956,9 @@ export function DataTable<T>({
                         headerCellsRef.current[col.key] = node;
                       }}
                       style={resolveColumnStyle(col)}
-                      className={`group/column relative z-50 px-4 py-3 whitespace-nowrap ${headerChromeClass} ${headerCornerClass} ${col.width ?? ""} ${col.headerClassName ?? ""} ${
+                      className={`group/column relative z-50 overflow-hidden px-4 py-3 whitespace-nowrap ${headerChromeClass} ${headerCornerClass} ${col.width ?? ""} ${col.headerClassName ?? ""} ${
                         activeReorderColumnKey === col.key
-                          ? "cursor-grabbing bg-white/70 dark:bg-neutral-800/90"
+                          ? "cursor-grabbing bg-slate-100 text-slate-700 shadow-[inset_2px_0_0_rgba(37,99,235,0.42),inset_-2px_0_0_rgba(14,165,233,0.28)] dark:bg-neutral-800 dark:text-white/80"
                           : ""
                       }`}
                     >
@@ -1897,7 +1966,6 @@ export function DataTable<T>({
                         <button
                           type="button"
                           data-vt-column-reorder-handle
-                          aria-label={t("common.reorder_column", { column: col.label })}
                           className={`absolute left-1 top-1/2 z-10 -translate-y-1/2 inline-flex h-5 w-5 items-center justify-center rounded-md cursor-grab touch-none text-slate-400/55 opacity-0 transition-opacity hover:bg-slate-200/60 hover:text-slate-600 focus-visible:opacity-100 active:cursor-grabbing dark:text-white/30 dark:hover:bg-white/10 dark:hover:text-white/65 ${
                             activeResizeColumnKey !== null
                               ? "pointer-events-none"
@@ -1908,11 +1976,14 @@ export function DataTable<T>({
                           onPointerDown={(event) => handleColumnReorderPointerDown(col, event)}
                         >
                           <GripVertical size={13} aria-hidden="true" />
+                          <span className="sr-only">
+                            {t("common.reorder_column", { column: col.label })}
+                          </span>
                         </button>
                       ) : null}
                       <div
                         data-vt-column-header-content
-                        className={`min-w-0 truncate ${canReorder ? "pl-5" : ""}`}
+                        className={`min-w-0 max-w-full overflow-hidden truncate ${canReorder ? "pl-5" : ""}`}
                       >
                         {col.headerRender ? col.headerRender() : col.label}
                       </div>
@@ -1959,7 +2030,7 @@ export function DataTable<T>({
                         <td
                           key={col.key}
                           data-vt-column-key={col.key}
-                          className={`px-4 py-3 align-middle ${col.cellClassName ?? ""}`}
+                          className={`overflow-hidden px-4 py-3 align-middle ${col.cellClassName ?? ""}`}
                         >
                           <div
                             className={[
@@ -2025,18 +2096,23 @@ export function DataTable<T>({
                               key={col.key}
                               data-vt-column-key={col.key}
                               style={resolveColumnStyle(col)}
-                              className={`px-4 py-2.5 align-middle ${
+                              className={`overflow-hidden px-4 py-2.5 align-middle ${
                                 naturalFlow
                                   ? ""
                                   : "group-hover/row:bg-slate-50 dark:group-hover/row:bg-white/[0.04]"
                               } ${col.cellClassName ?? ""} ${roundCls}`}
                             >
-                              <TableCellOverflowTooltip
-                                tooltipContent={overflowTooltip}
-                                className={col.cellClassName}
+                              <div
+                                data-vt-cell-content-clip
+                                className="min-w-0 max-w-full overflow-hidden"
                               >
-                                {content}
-                              </TableCellOverflowTooltip>
+                                <TableCellOverflowTooltip
+                                  tooltipContent={overflowTooltip}
+                                  className={col.cellClassName}
+                                >
+                                  {content}
+                                </TableCellOverflowTooltip>
+                              </div>
                             </td>
                           );
                         })}

@@ -23,11 +23,11 @@ const mockRequestLogsApis = async (page: Page) => {
       const items = Array.from({ length: 12 }, (_, index) => ({
         id: 2000 + index,
         timestamp: `2026-06-14T08:${String(index).padStart(2, "0")}:00Z`,
-        api_key: `sk-test-${String(index).padStart(4, "0")}`,
-        api_key_name: `QA Key ${index + 1}`,
-        model: index % 2 ? "claude-sonnet-4" : "gpt-4.1",
+        api_key: `sk-test-${String(index).padStart(4, "0")}-extra-long-key-for-drag-visual-qa`,
+        api_key_name: `QA Key ${index + 1} with deliberately long display name`,
+        model: index % 2 ? "claude-sonnet-4-extra-long-context" : "gpt-4.1-long-output-model",
         source: "openai",
-        channel_name: index % 2 ? "Anthropic" : "OpenAI",
+        channel_name: index % 2 ? "Anthropic long provider channel" : "OpenAI fallback channel",
         auth_index: `auth-${index + 1}`,
         failed: index === 4,
         latency_ms: 850 + index * 120,
@@ -94,6 +94,61 @@ const readTableState = async (page: Page) =>
     };
   });
 
+const readDragVisualState = async (page: Page) =>
+  page.evaluate(() => {
+    const isOpaque = (style: CSSStyleDeclaration, inlineBackground: string) =>
+      style.backgroundColor !== "rgba(0, 0, 0, 0)" || inlineBackground.includes("rgb(");
+    const readStyles = (selector: string) =>
+      [...document.querySelectorAll<HTMLElement>(selector)].map((element) => {
+        const style = getComputedStyle(element);
+        return {
+          backgroundColor: style.backgroundColor,
+          backgroundImage: style.backgroundImage,
+          boxShadow: style.boxShadow,
+          inlineBackground: element.style.background,
+          isOpaque: isOpaque(style, element.style.background),
+          opacity: style.opacity,
+          overflowX: style.overflowX,
+          overflowY: style.overflowY,
+          zIndex: style.zIndex,
+        };
+      });
+    const contentClips = [
+      ...document.querySelectorAll<HTMLElement>(
+        "td[data-vt-column-key] > [data-vt-cell-content-clip]",
+      ),
+    ];
+    return {
+      dragging: readStyles("[data-vt-column-dragging-cell]"),
+      shifted: readStyles("[data-vt-column-shifted-cell]"),
+      contentClipCount: contentClips.length,
+      contentClipsAreBounded: contentClips.every((element) => {
+        const parent = element.parentElement;
+        if (!parent) return false;
+        const rect = element.getBoundingClientRect();
+        const parentRect = parent.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return (
+          style.overflowX === "hidden" &&
+          style.overflowY === "hidden" &&
+          rect.left >= parentRect.left - 1 &&
+          rect.right <= parentRect.right + 1
+        );
+      }),
+      inlineStylesCleared: [
+        ...document.querySelectorAll<HTMLElement>("[data-vt-column-key]"),
+      ].every(
+        (element) =>
+          !element.hasAttribute("data-vt-column-dragging-cell") &&
+          !element.hasAttribute("data-vt-column-shifted-cell") &&
+          element.style.background === "" &&
+          element.style.overflow === "" &&
+          element.style.contain === "" &&
+          element.style.isolation === "",
+      ),
+    };
+  });
+
 test("Request Logs: column reorder follows the pointer and auto-scrolls horizontally", async ({
   page,
 }) => {
@@ -109,6 +164,9 @@ test("Request Logs: column reorder follows the pointer and auto-scrolls horizont
   const dragStart = await page
     .locator('th[data-vt-column-key="timestamp"] [data-vt-column-reorder-handle]')
     .evaluate((element) => {
+      if (element.hasAttribute("title") || element.hasAttribute("aria-label")) {
+        throw new Error("Column reorder handle must not expose hover tooltip attributes");
+      }
       const rect = element.getBoundingClientRect();
       return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     });
@@ -127,6 +185,33 @@ test("Request Logs: column reorder follows the pointer and auto-scrolls horizont
   expect(during.draggingCells).toBeGreaterThan(0);
   expect(during.shiftedCells).toBeGreaterThan(0);
   expect(during.scrollLeft).toBeGreaterThan(before.scrollLeft);
+  const visualDuringDrag = await readDragVisualState(page);
+  expect(visualDuringDrag.dragging.length).toBeGreaterThan(0);
+  expect(visualDuringDrag.shifted.length).toBeGreaterThan(0);
+  expect(
+    visualDuringDrag.dragging.every(
+      (style) =>
+        style.opacity === "1" &&
+        style.overflowX === "hidden" &&
+        style.overflowY === "hidden" &&
+        style.isOpaque &&
+        style.backgroundImage.includes("gradient") &&
+        style.boxShadow !== "none" &&
+        Number(style.zIndex) >= 90,
+    ),
+  ).toBe(true);
+  expect(
+    visualDuringDrag.shifted.every(
+      (style) =>
+        style.opacity === "1" &&
+        style.overflowX === "hidden" &&
+        style.overflowY === "hidden" &&
+        style.isOpaque &&
+        Number(style.zIndex) >= 45,
+    ),
+  ).toBe(true);
+  expect(visualDuringDrag.contentClipCount).toBeGreaterThan(0);
+  expect(visualDuringDrag.contentClipsAreBounded).toBe(true);
 
   await page.mouse.up();
 
@@ -141,4 +226,7 @@ test("Request Logs: column reorder follows the pointer and auto-scrolls horizont
   expect(after.draggingCells).toBe(0);
   expect(after.shiftedCells).toBe(0);
   expect(after.storedOrder).toContain('"timestamp"');
+  await page.waitForTimeout(160);
+  const visualAfterDrag = await readDragVisualState(page);
+  expect(visualAfterDrag.inlineStylesCleared).toBe(true);
 });
