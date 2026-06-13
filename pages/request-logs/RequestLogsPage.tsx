@@ -267,6 +267,22 @@ export function RequestLogsPage() {
     setSelectedStatuses(null);
   }, []);
 
+  const clearApiKeyFilter = useCallback(() => {
+    setSelectedApiKeys(null);
+  }, []);
+
+  const clearModelFilter = useCallback(() => {
+    setSelectedModels(null);
+  }, []);
+
+  const clearChannelFilter = useCallback(() => {
+    setSelectedChannels(null);
+  }, []);
+
+  const clearStatusFilter = useCallback(() => {
+    setSelectedStatuses(null);
+  }, []);
+
   // Fetch logs from backend (server-side pagination)
   const fetchLogs = useCallback(
     async (page: number, size: number) => {
@@ -523,6 +539,10 @@ export function RequestLogsPage() {
           onModelsChange={handleModelsChange}
           onChannelsChange={handleChannelsChange}
           onStatusesChange={handleStatusesChange}
+          onApiKeysClear={clearApiKeyFilter}
+          onModelsClear={clearModelFilter}
+          onChannelsClear={clearChannelFilter}
+          onStatusesClear={clearStatusFilter}
           onResetFilters={resetFilters}
           hasActiveFilters={hasActiveFilters}
         />

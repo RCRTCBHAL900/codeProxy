@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { RotateCcw } from "lucide-react";
 import { SearchableCheckboxMultiSelect } from "@code-proxy/ui";
 import type { SearchableCheckboxMultiSelectOption } from "@code-proxy/ui";
@@ -21,6 +21,10 @@ interface RequestLogsFiltersProps {
   onModelsChange: (value: string[]) => void;
   onChannelsChange: (value: string[]) => void;
   onStatusesChange: (value: StatusFilterValue[]) => void;
+  onApiKeysClear: () => void;
+  onModelsClear: () => void;
+  onChannelsClear: () => void;
+  onStatusesClear: () => void;
   onResetFilters: () => void;
   hasActiveFilters: boolean;
 }
@@ -38,6 +42,10 @@ export function RequestLogsFilters({
   onModelsChange,
   onChannelsChange,
   onStatusesChange,
+  onApiKeysClear,
+  onModelsClear,
+  onChannelsClear,
+  onStatusesClear,
   onResetFilters,
   hasActiveFilters,
 }: RequestLogsFiltersProps) {
@@ -47,6 +55,9 @@ export function RequestLogsFilters({
     () => (value: string[]) => onStatusesChange(value as StatusFilterValue[]),
     [onStatusesChange],
   );
+  const statusClearAdapter = useCallback(() => {
+    onStatusesClear();
+  }, [onStatusesClear]);
 
   return (
     <div className="border-t border-slate-100 px-5 py-3 dark:border-neutral-800/60">
@@ -64,6 +75,7 @@ export function RequestLogsFilters({
             noResultsLabel={t("request_logs.no_filter_results")}
             aria-label={t("request_logs.filter_key")}
             clearLabel={t("request_logs.clear_key_filter")}
+            onClear={onApiKeysClear}
             showClearButton
             size="sm"
             emptyValueMeansAllSelected
@@ -90,6 +102,7 @@ export function RequestLogsFilters({
             noResultsLabel={t("request_logs.no_filter_results")}
             aria-label={t("request_logs.filter_model")}
             clearLabel={t("request_logs.clear_model_filter")}
+            onClear={onModelsClear}
             showClearButton
             size="sm"
             emptyValueMeansAllSelected
@@ -116,6 +129,7 @@ export function RequestLogsFilters({
             noResultsLabel={t("request_logs.no_filter_results")}
             aria-label={t("request_logs.filter_channel")}
             clearLabel={t("request_logs.clear_channel_filter")}
+            onClear={onChannelsClear}
             showClearButton
             size="sm"
             emptyValueMeansAllSelected
@@ -142,6 +156,7 @@ export function RequestLogsFilters({
             noResultsLabel={t("request_logs.no_filter_results")}
             aria-label={t("request_logs.filter_status")}
             clearLabel={t("request_logs.clear_status_filter")}
+            onClear={statusClearAdapter}
             showClearButton
             size="sm"
             emptyValueMeansAllSelected
