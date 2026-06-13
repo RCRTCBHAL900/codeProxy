@@ -121,29 +121,40 @@ const NON_RESIZABLE_COLUMN_KEYS = new Set(["select", "action", "actions"]);
 const COLUMN_ORDER_STORAGE_PREFIX = "codeProxy.dataTable.columnOrder.v1";
 const COLUMN_REORDER_ACTIVATION_DELAY_MS = 180;
 const COLUMN_REORDER_MIN_DRAG_DISTANCE_PX = 4;
+const COLUMN_REORDER_AUTOSCROLL_EDGE_PX = 72;
+const COLUMN_REORDER_AUTOSCROLL_MAX_PX_PER_FRAME = 22;
+const COLUMN_REORDER_SHIFT_TRANSITION = "transform 150ms cubic-bezier(0.22, 1, 0.36, 1)";
 const NON_REORDERABLE_COLUMN_KEYS = new Set(["select", "action", "actions"]);
 
 type ColumnOrder = string[];
+
+interface ColumnReorderGeometry {
+  key: string;
+  index: number;
+  left: number;
+  width: number;
+  elements: HTMLElement[];
+  appliedDragging: boolean;
+  appliedShift: number | null;
+  appliedTransform: string;
+}
 
 interface ColumnReorderState {
   pointerId: number;
   columnKey: string;
   originIndex: number;
-  currentIndex: number;
+  currentToIndex: number;
   startClientX: number;
   startClientY: number;
+  startScrollLeft: number;
+  lastClientX: number;
+  lastClientY: number;
   activated: boolean;
   activationTimer: number | null;
   allowedMinIndex: number;
   allowedMaxIndex: number;
-}
-
-interface ColumnReorderPreview {
-  fromIndex: number;
-  toIndex: number;
-  left: number;
-  top: number;
-  height: number;
+  columns: ColumnReorderGeometry[];
+  draggedWidth: number;
 }
 
 type ColumnWidthMap = Record<string, number>;
@@ -402,6 +413,72 @@ function moveColumnKey(order: ColumnOrder, fromIndex: number, toIndex: number) {
   return next;
 }
 
+function clampColumnReorderTarget(
+  toIndex: number,
+  minIndex: number,
+  maxIndex: number,
+  columnCount: number,
+) {
+  return Math.max(minIndex, Math.min(Math.min(maxIndex, columnCount), toIndex));
+}
+
+function getColumnReorderDragOffset(
+  active: ColumnReorderState,
+  clientX: number,
+  scrollLeft: number,
+) {
+  return clientX - active.startClientX + (scrollLeft - active.startScrollLeft);
+}
+
+function findColumnReorderTargetIndex(active: ColumnReorderState, dragOffsetX: number) {
+  const origin = active.columns[active.originIndex];
+  if (!origin) return active.originIndex;
+
+  const draggedCenter = origin.left + origin.width / 2 + dragOffsetX;
+  let nextIndex = active.allowedMaxIndex;
+  const maxMeasuredIndex = Math.min(active.allowedMaxIndex, active.columns.length);
+
+  for (let index = active.allowedMinIndex; index < maxMeasuredIndex; index += 1) {
+    const geometry = active.columns[index];
+    if (!geometry) continue;
+    const midpoint = geometry.left + geometry.width / 2;
+    if (draggedCenter < midpoint) {
+      nextIndex = index;
+      break;
+    }
+    nextIndex = index + 1;
+  }
+
+  return clampColumnReorderTarget(
+    nextIndex,
+    active.allowedMinIndex,
+    active.allowedMaxIndex,
+    active.columns.length,
+  );
+}
+
+function getColumnReorderShift(active: ColumnReorderState, geometry: ColumnReorderGeometry) {
+  if (geometry.key === active.columnKey) return null;
+  const toIndex = active.currentToIndex;
+  const originIndex = active.originIndex;
+
+  if (toIndex < originIndex && geometry.index >= toIndex && geometry.index < originIndex) {
+    return active.draggedWidth;
+  }
+
+  if (toIndex > originIndex + 1 && geometry.index > originIndex && geometry.index < toIndex) {
+    return -active.draggedWidth;
+  }
+
+  return 0;
+}
+
+function formatColumnReorderTransform(offsetX: number) {
+  if (Math.abs(offsetX) < 0.1) return "";
+  const rounded = Math.round(offsetX * 100) / 100;
+  return `translate3d(${rounded}px, 0, 0)`;
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -436,6 +513,7 @@ export function DataTable<T>({
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const tableRef = useRef<HTMLTableElement | null>(null);
   const headerRef = useRef<HTMLTableSectionElement | null>(null);
   const headerCellsRef = useRef<Record<string, HTMLTableCellElement | null>>({});
   const columnElementsRef = useRef<Record<string, HTMLTableColElement | null>>({});
@@ -490,7 +568,7 @@ export function DataTable<T>({
       : [],
   );
   const columnOrderRef = useRef<ColumnOrder>(columnOrder);
-  const [reorderPreview, setReorderPreview] = useState<ColumnReorderPreview | null>(null);
+  const [activeReorderColumnKey, setActiveReorderColumnKey] = useState<string | null>(null);
   const [rowHoverOverlay, setRowHoverOverlay] = useState<{
     left: number;
     top: number;
@@ -498,7 +576,8 @@ export function DataTable<T>({
     height: number;
   } | null>(null);
   const columnReorderRef = useRef<ColumnReorderState | null>(null);
-  const reorderPreviewRef = useRef<ColumnReorderPreview | null>(null);
+  const columnReorderRafRef = useRef<number | null>(null);
+  const columnReorderAutoScrollRafRef = useRef<number | null>(null);
   const hoveredRowRef = useRef<HTMLTableRowElement | null>(null);
 
   const orderedColumns = useMemo(() => {
@@ -540,10 +619,6 @@ export function DataTable<T>({
   useEffect(() => {
     columnOrderRef.current = columnOrder;
   }, [columnOrder]);
-
-  useEffect(() => {
-    reorderPreviewRef.current = reorderPreview;
-  }, [reorderPreview]);
 
   const orderedColumnsRef = useRef(orderedColumns);
   useEffect(() => {
@@ -1122,68 +1197,212 @@ export function DataTable<T>({
   // Column Reorder Handlers
   // ---------------------------------------------------------------------------
 
-  const cancelColumnReorder = useCallback(() => {
-    const active = columnReorderRef.current;
-    if (!active) return;
-    if (active.activationTimer !== null) {
-      window.clearTimeout(active.activationTimer);
-    }
-    columnReorderRef.current = null;
-    setReorderPreview(null);
-    document.body.style.cursor = "";
-    document.body.style.userSelect = "";
-    document.documentElement.style.cursor = "";
-  }, []);
+  const collectColumnReorderGeometry = useCallback(
+    (currentColumns: DataTableColumn<T>[]): ColumnReorderGeometry[] | null => {
+      const container = containerRef.current;
+      const table = tableRef.current;
+      if (!container || !table) return null;
 
-  const findColumnDropIndex = useCallback((clientX: number, minIndex: number, maxIndex: number) => {
-    let nextIndex = maxIndex;
-    const currentColumns = orderedColumnsRef.current;
-    for (let index = minIndex; index <= maxIndex; index += 1) {
-      const column = currentColumns[index];
-      const rect = column ? headerCellsRef.current[column.key]?.getBoundingClientRect() : null;
-      if (!rect) continue;
-      const midpoint = rect.left + rect.width / 2;
-      if (clientX < midpoint) {
-        nextIndex = index;
-        break;
-      }
-      nextIndex = index + 1;
-    }
-    return Math.max(minIndex, Math.min(maxIndex, nextIndex));
-  }, []);
+      const containerRect = container.getBoundingClientRect();
+      const elementsByKey = new Map<string, HTMLElement[]>();
+      table.querySelectorAll<HTMLElement>("[data-vt-column-key]").forEach((element) => {
+        const key = element.dataset.vtColumnKey;
+        if (!key) return;
+        const bucket = elementsByKey.get(key);
+        if (bucket) {
+          bucket.push(element);
+        } else {
+          elementsByKey.set(key, [element]);
+        }
+      });
 
-  const buildColumnReorderPreview = useCallback(
-    (fromIndex: number, toIndex: number): ColumnReorderPreview | null => {
-      const rootRect = rootRef.current?.getBoundingClientRect();
-      const containerRect = containerRef.current?.getBoundingClientRect();
-      const currentColumns = orderedColumnsRef.current;
-      if (!rootRect || !containerRect) return null;
+      const geometries = currentColumns.map((column, index) => {
+        const headerCell = headerCellsRef.current[column.key];
+        const rect = headerCell?.getBoundingClientRect();
+        return {
+          key: column.key,
+          index,
+          left: rect ? rect.left - containerRect.left + container.scrollLeft : 0,
+          width: rect?.width ?? 0,
+          elements: elementsByKey.get(column.key) ?? [],
+          appliedDragging: false,
+          appliedShift: null,
+          appliedTransform: "",
+        };
+      });
 
-      // When dragging right (fromIndex < toIndex), the dragged item is inserted
-      // before column toIndex after the removal shift, so the preview line sits
-      // at the RIGHT edge of the column at toIndex - 1.
-      // When dragging left (fromIndex >= toIndex), the line sits at the LEFT
-      // edge of the column at toIndex.
-      const usePrev = toIndex > fromIndex;
-      const elemIdx = usePrev
-        ? Math.min(toIndex - 1, currentColumns.length - 1)
-        : Math.min(toIndex, currentColumns.length - 1);
-      const targetKey = currentColumns[elemIdx]?.key;
-      const headerCell = targetKey ? headerCellsRef.current[targetKey] : null;
-      if (!headerCell) return null;
-
-      const cellRect = headerCell.getBoundingClientRect();
-      const left = usePrev ? cellRect.right : cellRect.left;
-
-      return {
-        fromIndex,
-        toIndex,
-        left: left - rootRect.left - 1,
-        top: Math.max(0, containerRect.top - rootRect.top),
-        height: Math.max(0, Math.min(rootRect.height, containerRect.bottom - rootRect.top)),
-      };
+      return geometries.some((geometry) => geometry.width > 0) ? geometries : null;
     },
     [],
+  );
+
+  const clearColumnReorderStyles = useCallback((active: ColumnReorderState | null) => {
+    active?.columns.forEach((geometry) => {
+      geometry.elements.forEach((element) => {
+        element.style.transform = "";
+        element.style.transition = "";
+        element.style.willChange = "";
+        element.style.position = "";
+        element.style.zIndex = "";
+        element.style.pointerEvents = "";
+        element.style.opacity = "";
+        element.style.filter = "";
+        element.style.boxShadow = "";
+        element.removeAttribute("data-vt-column-dragging-cell");
+        element.removeAttribute("data-vt-column-shifted-cell");
+      });
+    });
+  }, []);
+
+  const applyColumnReorderStyles = useCallback(
+    (active: ColumnReorderState, dragOffsetX: number) => {
+      active.columns.forEach((geometry) => {
+        const isDragged = geometry.key === active.columnKey;
+        const shift = isDragged ? dragOffsetX : (getColumnReorderShift(active, geometry) ?? 0);
+        const transform = formatColumnReorderTransform(shift);
+        const stableShift = isDragged ? null : shift;
+        if (
+          geometry.appliedDragging === isDragged &&
+          geometry.appliedShift === stableShift &&
+          geometry.appliedTransform === transform
+        ) {
+          return;
+        }
+        geometry.appliedDragging = isDragged;
+        geometry.appliedShift = stableShift;
+        geometry.appliedTransform = transform;
+
+        geometry.elements.forEach((element) => {
+          element.style.transform = transform;
+          element.style.transition = isDragged ? "none" : COLUMN_REORDER_SHIFT_TRANSITION;
+          element.style.willChange = "transform";
+          element.style.position = "relative";
+          element.style.zIndex = isDragged ? "80" : shift ? "40" : "";
+          element.style.pointerEvents = isDragged ? "none" : "";
+          element.style.opacity = isDragged ? "0.96" : "";
+          element.style.filter = isDragged ? "brightness(1.02)" : "";
+          element.style.boxShadow = isDragged ? "0 14px 32px -24px rgba(15, 23, 42, 0.7)" : "";
+
+          if (isDragged) {
+            element.setAttribute("data-vt-column-dragging-cell", "true");
+            element.removeAttribute("data-vt-column-shifted-cell");
+          } else if (shift) {
+            element.setAttribute("data-vt-column-shifted-cell", "true");
+            element.removeAttribute("data-vt-column-dragging-cell");
+          } else {
+            element.removeAttribute("data-vt-column-dragging-cell");
+            element.removeAttribute("data-vt-column-shifted-cell");
+          }
+        });
+      });
+    },
+    [],
+  );
+
+  const applyColumnReorderFrame = useCallback(() => {
+    columnReorderRafRef.current = null;
+    const active = columnReorderRef.current;
+    const container = containerRef.current;
+    if (!active || !active.activated || !container) return;
+
+    const dragOffsetX = getColumnReorderDragOffset(
+      active,
+      active.lastClientX,
+      container.scrollLeft,
+    );
+    active.currentToIndex = findColumnReorderTargetIndex(active, dragOffsetX);
+    applyColumnReorderStyles(active, dragOffsetX);
+  }, [applyColumnReorderStyles]);
+
+  const scheduleColumnReorderFrame = useCallback(() => {
+    if (columnReorderRafRef.current !== null) return;
+    columnReorderRafRef.current = window.requestAnimationFrame(applyColumnReorderFrame);
+  }, [applyColumnReorderFrame]);
+
+  const stopColumnReorderAutoScroll = useCallback(() => {
+    if (columnReorderAutoScrollRafRef.current !== null) {
+      window.cancelAnimationFrame(columnReorderAutoScrollRafRef.current);
+      columnReorderAutoScrollRafRef.current = null;
+    }
+  }, []);
+
+  const runColumnReorderAutoScroll = useCallback(() => {
+    columnReorderAutoScrollRafRef.current = null;
+    const active = columnReorderRef.current;
+    const container = containerRef.current;
+    if (!active || !active.activated || !container || naturalFlow) return;
+
+    const rect = container.getBoundingClientRect();
+    const maxScrollLeft = Math.max(0, container.scrollWidth - container.clientWidth);
+    if (maxScrollLeft <= 0) return;
+
+    const leftIntensity = Math.max(
+      0,
+      Math.min(
+        1,
+        (COLUMN_REORDER_AUTOSCROLL_EDGE_PX - (active.lastClientX - rect.left)) /
+          COLUMN_REORDER_AUTOSCROLL_EDGE_PX,
+      ),
+    );
+    const rightIntensity = Math.max(
+      0,
+      Math.min(
+        1,
+        (COLUMN_REORDER_AUTOSCROLL_EDGE_PX - (rect.right - active.lastClientX)) /
+          COLUMN_REORDER_AUTOSCROLL_EDGE_PX,
+      ),
+    );
+    const direction =
+      leftIntensity > 0 && container.scrollLeft > 0
+        ? -1
+        : rightIntensity > 0 && container.scrollLeft < maxScrollLeft
+          ? 1
+          : 0;
+
+    if (direction === 0) return;
+
+    const intensity = direction < 0 ? leftIntensity : rightIntensity;
+    const delta =
+      direction *
+      Math.max(1, Math.round(COLUMN_REORDER_AUTOSCROLL_MAX_PX_PER_FRAME * intensity * intensity));
+    const nextScrollLeft = Math.max(0, Math.min(maxScrollLeft, container.scrollLeft + delta));
+
+    if (nextScrollLeft !== container.scrollLeft) {
+      container.scrollLeft = nextScrollLeft;
+      updateScrollMetrics();
+      scheduleColumnReorderFrame();
+    }
+
+    columnReorderAutoScrollRafRef.current = window.requestAnimationFrame(
+      runColumnReorderAutoScroll,
+    );
+  }, [naturalFlow, scheduleColumnReorderFrame, updateScrollMetrics]);
+
+  const ensureColumnReorderAutoScroll = useCallback(() => {
+    if (columnReorderAutoScrollRafRef.current !== null) return;
+    columnReorderAutoScrollRafRef.current = window.requestAnimationFrame(
+      runColumnReorderAutoScroll,
+    );
+  }, [runColumnReorderAutoScroll]);
+
+  const activateColumnReorder = useCallback(
+    (active: ColumnReorderState) => {
+      if (active.activated) return active;
+      if (active.activationTimer !== null) {
+        window.clearTimeout(active.activationTimer);
+      }
+      active.activationTimer = null;
+      active.activated = true;
+      columnReorderRef.current = active;
+      document.body.style.cursor = "grabbing";
+      document.body.style.userSelect = "none";
+      document.documentElement.style.cursor = "grabbing";
+      setActiveReorderColumnKey(active.columnKey);
+      scheduleColumnReorderFrame();
+      ensureColumnReorderAutoScroll();
+      return active;
+    },
+    [ensureColumnReorderAutoScroll, scheduleColumnReorderFrame],
   );
 
   const ensureColumnReorderActivated = useCallback(
@@ -1194,48 +1413,83 @@ export function DataTable<T>({
         Math.abs(event.clientY - active.startClientY) >= COLUMN_REORDER_MIN_DRAG_DISTANCE_PX;
       if (!movedEnough) return false;
 
-      if (active.activationTimer !== null) {
-        window.clearTimeout(active.activationTimer);
-      }
-      columnReorderRef.current = { ...active, activated: true };
-      document.body.style.cursor = "grabbing";
-      document.body.style.userSelect = "none";
+      activateColumnReorder(active);
       return true;
     },
-    [],
+    [activateColumnReorder],
   );
 
-  const finishColumnReorder = useCallback(() => {
-    const active = columnReorderRef.current;
-    const preview = reorderPreviewRef.current;
-
-    if (active) {
+  const cancelColumnReorder = useCallback(
+    (event?: PointerEvent) => {
+      const active = columnReorderRef.current;
+      if (!active) return;
+      if (event && active.pointerId !== event.pointerId) return;
       if (active.activationTimer !== null) {
         window.clearTimeout(active.activationTimer);
       }
-    }
-
-    columnReorderRef.current = null;
-    setReorderPreview(null);
-    document.body.style.cursor = "";
-    document.body.style.userSelect = "";
-    document.documentElement.style.cursor = "";
-
-    if (!active || !active.activated || !preview) return;
-
-    setColumnOrder((prev) => {
-      const normalizedPrev = normalizeColumnOrder(columnsRef.current, prev);
-      const fromIndex = normalizedPrev.indexOf(active.columnKey);
-      if (fromIndex < 0) return prev;
-      const next = moveColumnKey(normalizedPrev, fromIndex, preview.toIndex);
-      if (next.length === normalizedPrev.length && next.every((v, i) => v === normalizedPrev[i]))
-        return prev;
-      if (canPersistColumnOrder) {
-        writeStoredColumnOrder(tableId, next);
+      if (columnReorderRafRef.current !== null) {
+        window.cancelAnimationFrame(columnReorderRafRef.current);
+        columnReorderRafRef.current = null;
       }
-      return next;
-    });
-  }, [canPersistColumnOrder, tableId]);
+      stopColumnReorderAutoScroll();
+      clearColumnReorderStyles(active);
+      columnReorderRef.current = null;
+      setActiveReorderColumnKey(null);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.documentElement.style.cursor = "";
+    },
+    [clearColumnReorderStyles, stopColumnReorderAutoScroll],
+  );
+
+  const finishColumnReorder = useCallback(
+    (event?: PointerEvent) => {
+      const active = columnReorderRef.current;
+      if (!active) return;
+      if (event && active.pointerId !== event.pointerId) return;
+
+      if (active.activationTimer !== null) {
+        window.clearTimeout(active.activationTimer);
+      }
+      if (columnReorderRafRef.current !== null) {
+        window.cancelAnimationFrame(columnReorderRafRef.current);
+        columnReorderRafRef.current = null;
+      }
+      stopColumnReorderAutoScroll();
+
+      const shouldCommit = active.activated;
+      const toIndex = active.currentToIndex;
+      clearColumnReorderStyles(active);
+      columnReorderRef.current = null;
+      setActiveReorderColumnKey(null);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.documentElement.style.cursor = "";
+
+      if (!shouldCommit) return;
+
+      setColumnOrder((prev) => {
+        const normalizedPrev = normalizeColumnOrder(columnsRef.current, prev);
+        const fromIndex = normalizedPrev.indexOf(active.columnKey);
+        if (fromIndex < 0) return prev;
+        const next = moveColumnKey(normalizedPrev, fromIndex, toIndex);
+        if (next.length === normalizedPrev.length && next.every((v, i) => v === normalizedPrev[i]))
+          return prev;
+        if (canPersistColumnOrder) {
+          writeStoredColumnOrder(tableId, next);
+        }
+        return next;
+      });
+      window.requestAnimationFrame(() => updateScrollMetrics());
+    },
+    [
+      canPersistColumnOrder,
+      clearColumnReorderStyles,
+      stopColumnReorderAutoScroll,
+      tableId,
+      updateScrollMetrics,
+    ],
+  );
 
   const handleColumnReorderPointerDown = useCallback(
     (column: DataTableColumn<T>, e: ReactPointerEvent<HTMLButtonElement>) => {
@@ -1250,6 +1504,9 @@ export function DataTable<T>({
       const currentColumns = orderedColumnsRef.current;
       const columnIndex = currentColumns.indexOf(column);
       if (columnIndex < 0) return;
+      const geometries = collectColumnReorderGeometry(currentColumns);
+      const draggedGeometry = geometries?.[columnIndex];
+      if (!geometries || !draggedGeometry || draggedGeometry.width <= 0) return;
 
       const movableKeys = normalizeColumnOrder(currentColumns, columnOrderRef.current);
       const startLocked = currentColumns.filter(
@@ -1262,24 +1519,27 @@ export function DataTable<T>({
         pointerId: e.pointerId,
         columnKey: column.key,
         originIndex: columnIndex,
-        currentIndex: columnIndex,
+        currentToIndex: columnIndex,
         startClientX: e.clientX,
         startClientY: e.clientY,
+        startScrollLeft: containerRef.current?.scrollLeft ?? 0,
+        lastClientX: e.clientX,
+        lastClientY: e.clientY,
         activated: false,
         activationTimer: window.setTimeout(() => {
           const active = columnReorderRef.current;
           if (!active || active.pointerId !== e.pointerId) return;
-          columnReorderRef.current = { ...active, activated: true };
-          document.body.style.cursor = "grabbing";
-          document.body.style.userSelect = "none";
+          activateColumnReorder(active);
         }, COLUMN_REORDER_ACTIVATION_DELAY_MS),
         allowedMinIndex: startLocked,
         allowedMaxIndex: maxMovable,
+        columns: geometries,
+        draggedWidth: draggedGeometry.width,
       };
 
       columnReorderRef.current = state;
     },
-    [canUseColumnOrder],
+    [activateColumnReorder, canUseColumnOrder, collectColumnReorderGeometry],
   );
 
   useEffect(() => {
@@ -1290,42 +1550,34 @@ export function DataTable<T>({
       if (!active || active.pointerId !== event.pointerId) return;
 
       event.preventDefault();
+      active.lastClientX = event.clientX;
+      active.lastClientY = event.clientY;
 
       const activated = ensureColumnReorderActivated(active, event);
       if (!activated) return;
 
-      const fromIndex = columnOrderRef.current.indexOf(active.columnKey);
-      if (fromIndex < 0) return;
-
-      const toIndex = findColumnDropIndex(
-        event.clientX,
-        active.allowedMinIndex,
-        active.allowedMaxIndex,
-      );
-
-      const preview = buildColumnReorderPreview(fromIndex, toIndex);
-      if (preview) {
-        reorderPreviewRef.current = preview;
-        setReorderPreview(preview);
-      }
+      scheduleColumnReorderFrame();
+      ensureColumnReorderAutoScroll();
     };
+
+    const handleWindowBlur = () => cancelColumnReorder();
 
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", finishColumnReorder);
     window.addEventListener("pointercancel", cancelColumnReorder);
-    window.addEventListener("blur", cancelColumnReorder);
+    window.addEventListener("blur", handleWindowBlur);
 
     return () => {
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", finishColumnReorder);
       window.removeEventListener("pointercancel", cancelColumnReorder);
-      window.removeEventListener("blur", cancelColumnReorder);
+      window.removeEventListener("blur", handleWindowBlur);
     };
   }, [
     canUseColumnOrder,
     ensureColumnReorderActivated,
-    findColumnDropIndex,
-    buildColumnReorderPreview,
+    scheduleColumnReorderFrame,
+    ensureColumnReorderAutoScroll,
     finishColumnReorder,
     cancelColumnReorder,
   ]);
@@ -1449,6 +1701,14 @@ export function DataTable<T>({
       if (columnResizeRafRef.current) {
         window.cancelAnimationFrame(columnResizeRafRef.current);
         columnResizeRafRef.current = null;
+      }
+      if (columnReorderRafRef.current) {
+        window.cancelAnimationFrame(columnReorderRafRef.current);
+        columnReorderRafRef.current = null;
+      }
+      if (columnReorderAutoScrollRafRef.current) {
+        window.cancelAnimationFrame(columnReorderAutoScrollRafRef.current);
+        columnReorderAutoScrollRafRef.current = null;
       }
       pendingColumnResizePointerRef.current = null;
     };
@@ -1585,6 +1845,7 @@ export function DataTable<T>({
             />
           ) : null}
           <table
+            ref={tableRef}
             className={`relative w-full ${minWidth} table-fixed border-separate border-spacing-0 text-sm`}
           >
             <caption className="sr-only">{caption}</caption>
@@ -1621,22 +1882,28 @@ export function DataTable<T>({
                     <th
                       key={col.key}
                       aria-label={col.label}
+                      data-vt-column-key={col.key}
                       ref={(node) => {
                         headerCellsRef.current[col.key] = node;
                       }}
                       style={resolveColumnStyle(col)}
-                      className={`group/column relative z-50 px-4 py-3 whitespace-nowrap ${headerChromeClass} ${headerCornerClass} ${col.width ?? ""} ${col.headerClassName ?? ""}`}
+                      className={`group/column relative z-50 px-4 py-3 whitespace-nowrap ${headerChromeClass} ${headerCornerClass} ${col.width ?? ""} ${col.headerClassName ?? ""} ${
+                        activeReorderColumnKey === col.key
+                          ? "cursor-grabbing bg-white/70 dark:bg-neutral-800/90"
+                          : ""
+                      }`}
                     >
                       {canReorder ? (
                         <button
                           type="button"
                           data-vt-column-reorder-handle
                           aria-label={t("common.reorder_column", { column: col.label })}
-                          title={t("common.reorder_column", { column: col.label })}
                           className={`absolute left-1 top-1/2 z-10 -translate-y-1/2 inline-flex h-5 w-5 items-center justify-center rounded-md cursor-grab touch-none text-slate-400/55 opacity-0 transition-opacity hover:bg-slate-200/60 hover:text-slate-600 focus-visible:opacity-100 active:cursor-grabbing dark:text-white/30 dark:hover:bg-white/10 dark:hover:text-white/65 ${
                             activeResizeColumnKey !== null
                               ? "pointer-events-none"
-                              : "group-hover/column:opacity-100"
+                              : activeReorderColumnKey === col.key
+                                ? "pointer-events-none"
+                                : "group-hover/column:opacity-100"
                           }`}
                           onPointerDown={(event) => handleColumnReorderPointerDown(col, event)}
                         >
@@ -1691,6 +1958,7 @@ export function DataTable<T>({
                       {orderedColumns.map((col, colIndex) => (
                         <td
                           key={col.key}
+                          data-vt-column-key={col.key}
                           className={`px-4 py-3 align-middle ${col.cellClassName ?? ""}`}
                         >
                           <div
@@ -1755,6 +2023,7 @@ export function DataTable<T>({
                           return (
                             <td
                               key={col.key}
+                              data-vt-column-key={col.key}
                               style={resolveColumnStyle(col)}
                               className={`px-4 py-2.5 align-middle ${
                                 naturalFlow
@@ -1856,19 +2125,6 @@ export function DataTable<T>({
       ) : null}
 
       {resizePreviewOverlay}
-
-      {/* ── Column Reorder Preview Line ── */}
-      {reorderPreview ? (
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute z-20 w-0.5 bg-blue-500/65"
-          style={{
-            left: reorderPreview.left,
-            top: reorderPreview.top,
-            height: reorderPreview.height,
-          }}
-        />
-      ) : null}
     </div>
   );
 }
